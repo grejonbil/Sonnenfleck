@@ -1,0 +1,460 @@
+/* =============================================
+   SonnenCheck Schweiz – Mobile-first Styles
+   ============================================= */
+
+:root {
+  --yellow:   #F5C518;
+  --orange:   #E8893D;
+  --sky:      #4A9BC7;
+  --dark:     #1A2A3A;
+  --bg:       #FFF9F0;
+  --surface:  rgba(255, 249, 240, 0.97);
+  --border:   #E0D4C8;
+  --text:     #1A1A2E;
+  --muted:    #7A7A8A;
+  --shadow-color: rgba(26, 42, 58, 0.45);
+  --radius:   16px;
+}
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  background: var(--dark);
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Map ── */
+#map {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* ── Loading overlay ── */
+#loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--dark);
+  z-index: 500;
+  transition: opacity 0.4s;
+}
+
+#loading.hidden { opacity: 0; pointer-events: none; }
+
+.loading-sun { font-size: 56px; animation: pulse 1.2s ease-in-out infinite; }
+.loading-text { color: #fff; font-size: 16px; letter-spacing: 0.3px; }
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%       { transform: scale(1.1); opacity: 0.8; }
+}
+
+/* ── Search ── */
+#search-container {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 200;
+}
+
+#search-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 15px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.18);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+#search-input::placeholder { color: var(--muted); }
+#search-input:focus { box-shadow: 0 0 0 2px var(--orange), 0 2px 16px rgba(0,0,0,0.18); }
+
+#search-results {
+  position: fixed;
+  top: 58px;
+  left: 12px;
+  right: 12px;
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.14);
+  z-index: 200;
+  overflow: hidden;
+  display: none;
+}
+
+.search-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0ece8;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.search-item:last-child { border-bottom: none; }
+.search-item:hover, .search-item:focus { background: var(--bg); outline: none; }
+.search-item strong { color: var(--orange); }
+
+/* ── Sun-status pill ── */
+#sun-status {
+  position: fixed;
+  top: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 40px;
+  background: var(--surface);
+  box-shadow: 0 3px 18px rgba(0,0,0,0.18);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 100;
+  white-space: nowrap;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+#status-icon { font-size: 22px; line-height: 1; }
+#status-text { font-size: 14px; font-weight: 600; color: var(--text); }
+
+#sun-status.sunny {
+  background: linear-gradient(135deg, #FFF3CD 0%, #FFE082 100%);
+  box-shadow: 0 3px 18px rgba(245, 197, 24, 0.35);
+}
+#sun-status.shaded {
+  background: linear-gradient(135deg, #E8EAF0 0%, #CFD8DC 100%);
+}
+
+/* ── Locate button ── */
+.map-button {
+  position: fixed;
+  right: 14px;
+  width: 46px;
+  height: 46px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s;
+}
+.map-button:active { transform: scale(0.93); }
+
+#btn-locate { bottom: 230px; }
+
+/* ── Bottom sheet ── */
+#bottom-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border-radius: 22px 22px 0 0;
+  padding: 10px 16px 28px;
+  box-shadow: 0 -4px 32px rgba(0,0,0,0.16);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  z-index: 100;
+  max-height: 55vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 0 auto 14px;
+}
+
+/* Info row */
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 14px;
+  gap: 8px;
+}
+
+#location-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+#location-name { font-weight: 700; font-size: 16px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#sun-times { font-size: 12px; color: var(--muted); }
+
+#weather-widget {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(74, 155, 199, 0.12);
+  padding: 6px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--sky);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+#weather-icon { font-size: 19px; }
+
+/* Control rows */
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.control-row--secondary { flex-wrap: wrap; gap: 8px; }
+
+/* Time display label */
+.time-display {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--orange);
+  min-width: 52px;
+  cursor: default;
+  user-select: none;
+}
+
+/* Slider */
+.slider-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
+}
+
+input[type="range"] {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: linear-gradient(to right, var(--orange) 0%, var(--yellow) 100%);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  background: var(--yellow);
+  border: 3px solid var(--orange);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  background: var(--yellow);
+  border: 3px solid var(--orange);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+/* Date picker */
+input[type="date"] {
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+  min-width: 0;
+}
+input[type="date"]:focus { border-color: var(--orange); }
+
+/* Animation controls */
+.anim-controls { display: flex; gap: 6px; align-items: center; }
+
+select {
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 8px;
+  font-size: 13px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+}
+
+/* Buttons */
+.btn-circle {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: var(--orange);
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 10px rgba(232, 137, 61, 0.38);
+  transition: transform 0.1s, background 0.2s;
+  flex-shrink: 0;
+}
+.btn-circle:active { transform: scale(0.92); }
+.btn-circle--outline {
+  background: #fff;
+  border: 1.5px solid var(--border);
+  color: var(--muted);
+  box-shadow: none;
+  font-size: 18px;
+}
+.btn-circle--outline.saved {
+  border-color: var(--yellow);
+  color: var(--yellow);
+}
+
+.btn-pill {
+  padding: 8px 14px;
+  border: 1.5px solid var(--orange);
+  border-radius: 20px;
+  background: #fff;
+  color: var(--orange);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.btn-pill:active { background: #FFF0E8; }
+
+/* Favorites */
+#favorites-section {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+#favorites-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding-top: 4px;
+}
+
+.fav-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #fff;
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 10px 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+  transition: border-color 0.2s;
+  max-width: 160px;
+}
+.fav-chip:hover { border-color: var(--orange); }
+.fav-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.fav-del {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 0 0 2px;
+  flex-shrink: 0;
+}
+.fav-del:hover { color: #c0392b; }
+
+.no-favorites {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 4px 0;
+}
+
+/* ── MapLibre popup overrides ── */
+.maplibregl-popup-content {
+  border-radius: 16px !important;
+  padding: 14px 16px !important;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.18) !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  min-width: 170px;
+  max-width: 240px;
+}
+
+.popup-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.popup-icon { font-size: 26px; }
+.popup-title { font-size: 16px; font-weight: 700; }
+.popup-title.sunny { color: var(--orange); }
+.popup-title.shaded { color: #5C7A8A; }
+
+.popup-detail { font-size: 13px; color: var(--muted); line-height: 1.7; }
+.popup-next { font-size: 12px; color: var(--orange); font-weight: 600; margin-top: 6px; }
+
+/* ── Tablet / Desktop ── */
+@media (min-width: 768px) {
+  #bottom-sheet {
+    left: 14px;
+    right: auto;
+    bottom: 14px;
+    width: 360px;
+    border-radius: 22px;
+    max-height: 80vh;
+  }
+
+  #btn-locate { bottom: 24px; }
+
+  #search-container {
+    left: 390px;
+    right: 14px;
+    top: 14px;
+  }
+
+  #search-results {
+    left: 390px;
+    right: 14px;
+    top: 62px;
+  }
+
+  #sun-status {
+    top: 14px;
+    left: auto;
+    right: 14px;
+    transform: none;
+  }
+}
+
+/* ── Accessibility ── */
+@media (prefers-reduced-motion: reduce) {
+  .loading-sun { animation: none; }
+  * { transition: none !important; }
+}

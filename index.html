@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#F5C518">
+  <meta name="description" content="SonnenCheck Schweiz – Wo scheint die Sonne gerade? Echtzeit-Schattenkarte für die Schweiz.">
+  <title>SonnenCheck Schweiz ☀️</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <!-- MapLibre GL JS -->
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+  <!-- SunCalc -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
+
+  <!-- App styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Map container (full screen) -->
+  <div id="map"></div>
+
+  <!-- Loading overlay -->
+  <div id="loading" role="status" aria-label="Karte wird geladen">
+    <div class="loading-sun">☀️</div>
+    <div class="loading-text">Karte wird geladen…</div>
+  </div>
+
+  <!-- Search bar -->
+  <div id="search-container" role="search">
+    <input
+      type="search"
+      id="search-input"
+      placeholder="Ort suchen…"
+      autocomplete="off"
+      autocorrect="off"
+      spellcheck="false"
+      aria-label="Ort suchen"
+    >
+  </div>
+  <div id="search-results" role="listbox" aria-label="Suchergebnisse"></div>
+
+  <!-- Sun-status pill (top-center) -->
+  <div id="sun-status" role="status" aria-live="polite">
+    <span id="status-icon" aria-hidden="true">☀️</span>
+    <span id="status-text">Karte erkunden</span>
+  </div>
+
+  <!-- Locate-me button -->
+  <button id="btn-locate" class="map-button" title="Meinen Standort anzeigen" aria-label="Meinen Standort anzeigen">📍</button>
+
+  <!-- Bottom sheet -->
+  <div id="bottom-sheet" role="complementary" aria-label="Steuerung">
+    <div class="sheet-handle" role="presentation"></div>
+
+    <!-- Location + Weather -->
+    <div class="info-row">
+      <div id="location-info">
+        <span id="location-name">Zürich</span>
+        <span id="sun-times" aria-label="Sonnenaufgang und -untergang"></span>
+      </div>
+      <div id="weather-widget" aria-label="Wetter">
+        <span id="weather-icon" aria-hidden="true">🌤️</span>
+        <span id="weather-text">—</span>
+      </div>
+    </div>
+
+    <!-- Time slider -->
+    <div class="control-row">
+      <label for="time-slider" id="time-label" class="time-display">12:00</label>
+      <div class="slider-wrap">
+        <span aria-hidden="true">🌅</span>
+        <input
+          type="range"
+          id="time-slider"
+          min="360"
+          max="1320"
+          step="15"
+          value="720"
+          aria-label="Uhrzeit auswählen"
+        >
+        <span aria-hidden="true">🌇</span>
+      </div>
+    </div>
+
+    <!-- Date + Controls row -->
+    <div class="control-row control-row--secondary">
+      <input type="date" id="date-picker" aria-label="Datum auswählen">
+      <div class="anim-controls">
+        <button id="btn-play" class="btn-circle" title="Animation starten" aria-label="Zeitraffer starten">▶</button>
+        <select id="anim-speed" aria-label="Animationsgeschwindigkeit">
+          <option value="1">1×</option>
+          <option value="2" selected>2×</option>
+          <option value="4">4×</option>
+          <option value="8">8×</option>
+        </select>
+      </div>
+      <button id="btn-now" class="btn-pill" aria-label="Aktuelle Uhrzeit anzeigen">Jetzt</button>
+      <button id="btn-fav-save" class="btn-circle btn-circle--outline" title="Als Favorit speichern" aria-label="Als Favorit speichern">☆</button>
+    </div>
+
+    <!-- Favorites list -->
+    <div id="favorites-section" aria-label="Favoriten">
+      <div id="favorites-list" role="list"></div>
+    </div>
+  </div>
+
+  <!-- JS modules -->
+  <script src="sun.js"></script>
+  <script src="shadow.js"></script>
+  <script src="weather.js"></script>
+  <script src="favorites.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
