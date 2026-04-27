@@ -94,33 +94,35 @@ const Shadow = {
   // ── Datenabrufe ──────────────────────────────────────────────────────────
 
   async _fetchSwisstopo(bounds) {
-    const { _w: w, _s: s, _e: e, _n: n } = {
-      _w: bounds.getWest(), _s: bounds.getSouth(),
-      _e: bounds.getEast(), _n: bounds.getNorth()
-    };
+    // TODO: CORS – Swisstopo WFS blockiert direkte Browser-Anfragen häufig
+    const w = bounds.getWest(), s = bounds.getSouth(),
+          e = bounds.getEast(), n = bounds.getNorth();
     const url = `https://wfs.geo.admin.ch/?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature` +
       `&TYPENAMES=ch.swisstopo.swissbuildings3d_2_gebaeude_footprint` +
       `&SRSNAME=EPSG:4326&BBOX=${s},${w},${n},${e}` +
       `&outputFormat=application/json&count=500`;
-
-    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
-    if (!res.ok) throw new Error('WFS HTTP ' + res.status);
-    return res.json();
+    return this._fetchJSON(url, 4000);
   },
 
   async _fetchOverpass(bounds) {
-    const { w, s, e, n } = {
-      w: bounds.getWest().toFixed(6), s: bounds.getSouth().toFixed(6),
-      e: bounds.getEast().toFixed(6), n: bounds.getNorth().toFixed(6)
-    };
-    const query = `[out:json][bbox:${s},${w},${n},${e}];` +
-      `(way["building"];);out body geom;`;
+    const w = bounds.getWest().toFixed(6), s = bounds.getSouth().toFixed(6),
+          e = bounds.getEast().toFixed(6), n = bounds.getNorth().toFixed(6);
+    const query = `[out:json][bbox:${s},${w},${n},${e}];(way["building"];);out body geom;`;
     const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
-
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) throw new Error('Overpass HTTP ' + res.status);
-    const data = await res.json();
+    const data = await this._fetchJSON(url, 12000);
     return this._overpassToGeoJSON(data);
+  },
+
+  async _fetchJSON(url, ms) {
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), ms);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    } finally {
+      clearTimeout(tid);
+    }
   },
 
   _overpassToGeoJSON(data) {

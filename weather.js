@@ -32,7 +32,10 @@ const Weather = {
       `&hourly=cloud_cover&forecast_days=1&timezone=Europe%2FZurich`;
 
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      const ctrl = new AbortController();
+      const tid  = setTimeout(() => ctrl.abort(), 5000);
+      const res  = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(tid);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const json = await res.json();
 

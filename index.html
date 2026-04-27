@@ -4,36 +4,86 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#F5C518">
-  <meta name="description" content="SonnenCheck Schweiz – Wo scheint die Sonne gerade? Echtzeit-Schattenkarte für die Schweiz.">
-  <title>SonnenCheck Schweiz ☀️</title>
-
-  <!-- PWA -->
+  <meta name="description" content="SonnenCheck – Wo scheint die Sonne gerade? Interaktive Schattenkarte für die Schweiz.">
+  <title>SonnenCheck ☀️</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
 
-  <!-- MapLibre GL JS -->
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <!-- Mapbox GL JS v3 -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.10.0/mapbox-gl.css" rel="stylesheet">
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.10.0/mapbox-gl.js"></script>
 
   <!-- SunCalc -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
 
-  <!-- App styles -->
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <!-- Map container (full screen) -->
-  <div id="map"></div>
+  <!-- ──────────────────────────────────────────── SPLASH / LANDING PAGE ── -->
+  <div id="splash">
+    <div class="splash-inner">
 
-  <!-- Loading overlay -->
-  <div id="loading" role="status" aria-label="Karte wird geladen">
-    <div class="loading-sun">☀️</div>
-    <div class="loading-text">Karte wird geladen…</div>
+      <!-- Logo SVG -->
+      <div class="splash-logo">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <!-- Strahlen -->
+          <g stroke="#F5C518" stroke-width="5.5" stroke-linecap="round">
+            <line x1="50" y1="4"  x2="50" y2="19"/>
+            <line x1="50" y1="81" x2="50" y2="96"/>
+            <line x1="4"  y1="50" x2="19" y2="50"/>
+            <line x1="81" y1="50" x2="96" y2="50"/>
+            <line x1="14.6" y1="14.6" x2="25.2" y2="25.2"/>
+            <line x1="74.8" y1="74.8" x2="85.4" y2="85.4"/>
+            <line x1="85.4" y1="14.6" x2="74.8" y2="25.2"/>
+            <line x1="25.2" y1="74.8" x2="14.6" y2="85.4"/>
+          </g>
+          <!-- Sonnenkreis gelb -->
+          <circle cx="50" cy="50" r="26" fill="#F5C518"/>
+          <!-- Schattenhälfte (links) -->
+          <path d="M50,24 A26,26,0,0,0,50,76 Z" fill="#1A2A3A" opacity="0.72"/>
+          <!-- Trennlinie -->
+          <line x1="50" y1="24" x2="50" y2="76" stroke="#fff" stroke-width="1.5" opacity="0.35"/>
+        </svg>
+      </div>
+
+      <h1 class="splash-title">SonnenCheck</h1>
+      <p class="splash-tagline">Wo scheint die Sonne gerade?</p>
+
+      <div class="splash-dots" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </div>
+      <p class="splash-hint">Karte wird geladen…</p>
+
+      <button id="btn-splash-skip" class="splash-btn" aria-label="App starten">
+        Jetzt erkunden
+      </button>
+    </div>
   </div>
 
-  <!-- Search bar -->
+  <!-- ────────────────────────────────────────────────────── HAUPT-APP ── -->
+
+  <!-- Kartencontainer -->
+  <div id="map"></div>
+
+  <!-- Suchleiste -->
   <div id="search-container" role="search">
+    <!-- Logo klein -->
+    <div class="header-logo" aria-label="SonnenCheck">
+      <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g stroke="#F5C518" stroke-width="6" stroke-linecap="round">
+          <line x1="50" y1="4"  x2="50" y2="18"/>
+          <line x1="50" y1="82" x2="50" y2="96"/>
+          <line x1="4"  y1="50" x2="18" y2="50"/>
+          <line x1="82" y1="50" x2="96" y2="50"/>
+          <line x1="15.1" y1="15.1" x2="25" y2="25"/>
+          <line x1="75" y1="75" x2="84.9" y2="84.9"/>
+          <line x1="84.9" y1="15.1" x2="75" y2="25"/>
+          <line x1="25" y1="75" x2="15.1" y2="84.9"/>
+        </g>
+        <circle cx="50" cy="50" r="24" fill="#F5C518"/>
+        <path d="M50,26 A24,24,0,0,0,50,74 Z" fill="#1A2A3A" opacity="0.7"/>
+      </svg>
+    </div>
     <input
       type="search"
       id="search-input"
@@ -46,24 +96,24 @@
   </div>
   <div id="search-results" role="listbox" aria-label="Suchergebnisse"></div>
 
-  <!-- Sun-status pill (top-center) -->
+  <!-- Sonne/Schatten-Pill -->
   <div id="sun-status" role="status" aria-live="polite">
     <span id="status-icon" aria-hidden="true">☀️</span>
     <span id="status-text">Karte erkunden</span>
   </div>
 
-  <!-- Locate-me button -->
-  <button id="btn-locate" class="map-button" title="Meinen Standort anzeigen" aria-label="Meinen Standort anzeigen">📍</button>
+  <!-- Standort-Button -->
+  <button id="btn-locate" class="map-button" title="Meinen Standort anzeigen" aria-label="Meinen Standort">📍</button>
 
-  <!-- Bottom sheet -->
+  <!-- Bottom Sheet -->
   <div id="bottom-sheet" role="complementary" aria-label="Steuerung">
     <div class="sheet-handle" role="presentation"></div>
 
-    <!-- Location + Weather -->
+    <!-- Ort + Wetter -->
     <div class="info-row">
       <div id="location-info">
         <span id="location-name">Zürich</span>
-        <span id="sun-times" aria-label="Sonnenaufgang und -untergang"></span>
+        <span id="sun-times" aria-label="Sonnenauf- und -untergang"></span>
       </div>
       <div id="weather-widget" aria-label="Wetter">
         <span id="weather-icon" aria-hidden="true">🌤️</span>
@@ -71,25 +121,18 @@
       </div>
     </div>
 
-    <!-- Time slider -->
+    <!-- Zeitschieberegler -->
     <div class="control-row">
       <label for="time-slider" id="time-label" class="time-display">12:00</label>
       <div class="slider-wrap">
         <span aria-hidden="true">🌅</span>
-        <input
-          type="range"
-          id="time-slider"
-          min="360"
-          max="1320"
-          step="15"
-          value="720"
-          aria-label="Uhrzeit auswählen"
-        >
+        <input type="range" id="time-slider" min="360" max="1320" step="15" value="720"
+               aria-label="Uhrzeit auswählen">
         <span aria-hidden="true">🌇</span>
       </div>
     </div>
 
-    <!-- Date + Controls row -->
+    <!-- Datum + Animation -->
     <div class="control-row control-row--secondary">
       <input type="date" id="date-picker" aria-label="Datum auswählen">
       <div class="anim-controls">
@@ -101,17 +144,16 @@
           <option value="8">8×</option>
         </select>
       </div>
-      <button id="btn-now" class="btn-pill" aria-label="Aktuelle Uhrzeit anzeigen">Jetzt</button>
-      <button id="btn-fav-save" class="btn-circle btn-circle--outline" title="Als Favorit speichern" aria-label="Als Favorit speichern">☆</button>
+      <button id="btn-now" class="btn-pill" aria-label="Aktuelle Uhrzeit">Jetzt</button>
+      <button id="btn-fav-save" class="btn-circle btn-circle--outline" title="Als Favorit speichern" aria-label="Favorit speichern">☆</button>
     </div>
 
-    <!-- Favorites list -->
+    <!-- Favoriten -->
     <div id="favorites-section" aria-label="Favoriten">
       <div id="favorites-list" role="list"></div>
     </div>
   </div>
 
-  <!-- JS modules -->
   <script src="sun.js"></script>
   <script src="shadow.js"></script>
   <script src="weather.js"></script>

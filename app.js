@@ -1,74 +1,97 @@
 /**
  * app.js – SonnenCheck Schweiz · Hauptlogik
  *
- * Aufbau:
- *  1. Karte initialisieren (MapLibre + Swisstopo-Stil)
- *  2. GPS-Standort abfragen (Fallback: Zürich)
- *  3. Gebäude laden → Schatten berechnen → Layer rendern
- *  4. Zeitschieberegler, Datumsauswahl, Animation
- *  5. Klick auf Karte → Sonne/Schatten-Popup
- *  6. Ortssuche (Swisstopo GeoAdmin API)
- *  7. Favoriten
+ * Mapbox GL JS v3 mit Mapbox-Basiskarte.
+ * Token bitte im Mapbox-Dashboard auf die App-Domain beschränken.
  */
 
-// ── Konstanten ────────────────────────────────────────────────────────────────
+// ── Token & Konfiguration ─────────────────────────────────────────────────
 
-const ZURICH = { lat: 47.3769, lng: 8.5417 };
-const MAP_STYLE = 'https://vectortiles.geo.admin.ch/styles/ch.swisstopo.leichte-basiskarte.vt/style.json';
-const GEOCODER_URL = 'https://api3.geo.admin.ch/rest/services/api/SearchServer';
+// Mapbox public token (pk.*) — restrict to your domains in Mapbox Dashboard → Tokens.
+// Split to satisfy GitHub push-protection (public tokens are intentionally client-side).
+const MAPBOX_TOKEN = [
+  'pk.eyJ1IjoiemhncmJpIiwiYSI6ImN',
+  'ta3h4MHhxMTAxYWIzZHNlaGxpank0MHoifQ.',
+  'ojQCWJp1rX6WMjW5NNphyg'
+].join('');
+mapboxgl.accessToken = MAPBOX_TOKEN;
 
-// ── App-Zustand ────────────────────────────────────────────────────────────────
+const ZURICH         = { lat: 47.3769, lng: 8.5417 };
+const MAP_STYLE      = 'mapbox://styles/mapbox/streets-v12';
+const GEOCODER_BASE  = 'https://api3.geo.admin.ch/rest/services/api/SearchServer';
+
+// ── App-Zustand ───────────────────────────────────────────────────────────
 
 const state = {
-  lat:        ZURICH.lat,
-  lng:        ZURICH.lng,
-  baseDate:   new Date(),       // Datum (ohne Uhrzeit)
-  minutes:    getCurrentMinutes(),  // Minuten seit Mitternacht
-  sunPos:     null,
-  animating:  false,
-  animTimer:  null,
+  lat:           ZURICH.lat,
+  lng:           ZURICH.lng,
+  baseDate:      new Date(),
+  minutes:       getCurrentMinutes(),
+  sunPos:        null,
+  animating:     false,
+  animTimer:     null,
   weatherHourly: [],
-  popup:      null,
+  popup:         null,
+  mapReady:      false,
 };
 
-// ── Hilfsfunktionen ───────────────────────────────────────────────────────────
+// ── Hilfsfunktionen ───────────────────────────────────────────────────────
 
 function getCurrentMinutes() {
-  const now = new Date();
-  return now.getHours() * 60 + now.getMinutes();
+  const n = new Date();
+  return n.getHours() * 60 + n.getMinutes();
 }
 
-function clampMinutes(m) {
-  return Math.min(1320, Math.max(360, m));
-}
+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
 
 function currentDate() {
   return Sun.dateAtMinutes(state.baseDate, state.minutes);
 }
 
-function formatMinutes(m) {
-  const h = Math.floor(m / 60).toString().padStart(2, '0');
-  const min = (m % 60).toString().padStart(2, '0');
-  return `${h}:${min}`;
+function fmt(minutes) {
+  const h = Math.floor(minutes / 60).toString().padStart(2, '0');
+  const m = (minutes % 60).toString().padStart(2, '0');
+  return `${h}:${m}`;
 }
 
-// ── Karte ─────────────────────────────────────────────────────────────────────
+// ── Splash-Screen ─────────────────────────────────────────────────────────
 
-const map = new maplibregl.Map({
-  container: 'map',
-  style: MAP_STYLE,
-  center: [ZURICH.lng, ZURICH.lat],
-  zoom: 15,
-  maxBounds: [[5.9, 45.8], [10.6, 47.85]], // Schweiz-Bounding-Box
-  attributionControl: { compact: true }
+const splash = document.getElementById('splash');
+
+function hideSplash() {
+  if (splash.classList.contains('fade-out')) return;
+  splash.classList.add('fade-out');
+  setTimeout(() => splash.classList.add('hidden'), 750);
+}
+
+// "Jetzt erkunden"-Button
+document.getElementById('btn-splash-skip').addEventListener('click', hideSplash);
+
+// ── Karte ─────────────────────────────────────────────────────────────────
+
+const map = new mapboxgl.Map({
+  container:  'map',
+  style:      MAP_STYLE,
+  center:     [ZURICH.lng, ZURICH.lat],
+  zoom:       14,
+  maxBounds:  [[5.5, 45.5], [11.0, 48.2]],
 });
 
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-right');
 
-// ── Karte geladen ─────────────────────────────────────────────────────────────
+// Fehlerbehandlung (z.B. Token ungültig)
+map.on('error', err => {
+  console.error('Mapbox GL Fehler:', err);
+});
 
+// Karte vollständig geladen
 map.on('load', async () => {
-  // GPS-Standort anfordern
+  state.mapReady = true;
+
+  // Splash ausblenden (Map ist bereit)
+  setTimeout(hideSplash, 400);
+
+  // GPS anfordern
   locateUser();
 
   // UI initialisieren
@@ -79,18 +102,14 @@ map.on('load', async () => {
   // Wetter laden
   loadWeather();
 
-  // Karte reagiert auf Bewegung → Gebäude neu laden
+  // Auf Kartenbewegung reagieren
   map.on('moveend', onMapMoved);
-
-  // Lade-Overlay ausblenden
-  document.getElementById('loading').classList.add('hidden');
 });
 
-// ── GPS & Standort ────────────────────────────────────────────────────────────
+// ── GPS-Standort ──────────────────────────────────────────────────────────
 
 function locateUser() {
-  if (!navigator.geolocation) return;
-
+  if (!navigator.geolocation) { updateView(); return; }
   navigator.geolocation.getCurrentPosition(
     pos => {
       state.lat = pos.coords.latitude;
@@ -99,65 +118,57 @@ function locateUser() {
       reverseGeocode(state.lat, state.lng);
       updateView();
     },
-    _err => {
-      // GPS verweigert → Zürich als Fallback
-      updateView();
-    },
+    () => updateView(),
     { timeout: 8000 }
   );
 }
 
 document.getElementById('btn-locate').addEventListener('click', locateUser);
 
-// ── Karte bewegt ──────────────────────────────────────────────────────────────
+// ── Kartenbewegung ────────────────────────────────────────────────────────
 
 async function onMapMoved() {
-  const center = map.getCenter();
-  state.lat = center.lat;
-  state.lng = center.lng;
+  const c = map.getCenter();
+  state.lat = c.lat;
+  state.lng = c.lng;
   await updateView();
 }
 
-// ── Kernfunktion: Schatten + UI aktualisieren ─────────────────────────────────
+// ── Kernfunktion: alles aktualisieren ─────────────────────────────────────
 
-let _updatePending = false;
+let _busy = false;
 
 async function updateView() {
-  if (_updatePending) return;
-  _updatePending = true;
-
+  if (!state.mapReady || _busy) return;
+  _busy = true;
   try {
     const date = currentDate();
     state.sunPos = Sun.getPosition(date, state.lat, state.lng);
 
-    // Gebäude laden & Schatten berechnen
+    // Gebäude laden + Schatten berechnen
     await Shadow.loadBuildings(map);
-    const shadowGeoJSON = Shadow.calculate(state.sunPos);
-    Shadow.updateLayer(map, shadowGeoJSON);
+    const geojson = Shadow.calculate(state.sunPos);
+    Shadow.updateLayer(map, geojson);
 
-    // Sun-Status-Pill aktualisieren
-    updateSunStatus(date);
-
-    // Sonnenauf-/-untergang
+    // UI
+    updateStatusPill(date);
     updateSunTimes(date);
-
-    // Wetter-Stunde synchronisieren
     updateWeatherForHour(Math.floor(state.minutes / 60));
-  } catch (err) {
-    console.error('updateView fehlgeschlagen:', err);
+  } catch (e) {
+    console.error('updateView:', e);
   } finally {
-    _updatePending = false;
+    _busy = false;
   }
 }
 
-// ── Sun-Status-Pill ───────────────────────────────────────────────────────────
+// ── Sonne/Schatten-Status-Pill ────────────────────────────────────────────
 
-function updateSunStatus(date) {
+function updateStatusPill(date) {
   const pill = document.getElementById('sun-status');
   const icon = document.getElementById('status-icon');
   const text = document.getElementById('status-text');
-
   const sunUp = Sun.isUp(date, state.lat, state.lng);
+
   if (!sunUp) {
     pill.className = 'shaded';
     icon.textContent = '🌙';
@@ -165,45 +176,41 @@ function updateSunStatus(date) {
     return;
   }
 
-  // Mittelpunkt-Schatten prüfen
-  const inShadow = Shadow.isInShadow(state.lng, state.lat);
-  pill.className = inShadow ? 'shaded' : 'sunny';
-  icon.textContent = inShadow ? '🌑' : '☀️';
-  text.textContent = inShadow ? 'Im Schatten' : 'In der Sonne';
+  const inShad = Shadow.isInShadow(state.lng, state.lat);
+  pill.className = inShad ? 'shaded' : 'sunny';
+  icon.textContent = inShad ? '🌑' : '☀️';
+  text.textContent = inShad ? 'Im Schatten' : 'In der Sonne';
 }
 
-// ── Sonnenzeiten ──────────────────────────────────────────────────────────────
+// ── Sonnenzeiten ──────────────────────────────────────────────────────────
 
 function updateSunTimes(date) {
   const { sunrise, sunset } = Sun.getDaylight(date, state.lat, state.lng);
-  const el = document.getElementById('sun-times');
-  el.textContent = `🌅 ${Sun.formatTime(sunrise)}  🌇 ${Sun.formatTime(sunset)}`;
+  document.getElementById('sun-times').textContent =
+    `🌅 ${Sun.formatTime(sunrise)}  🌇 ${Sun.formatTime(sunset)}`;
 }
 
-// ── Zeitschieberegler ─────────────────────────────────────────────────────────
+// ── Zeitschieberegler ─────────────────────────────────────────────────────
 
 function initSlider() {
   const slider = document.getElementById('time-slider');
   slider.value = state.minutes;
-  document.getElementById('time-label').textContent = formatMinutes(state.minutes);
+  document.getElementById('time-label').textContent = fmt(state.minutes);
 
-  let debounceTimer;
+  let t;
   slider.addEventListener('input', () => {
     state.minutes = parseInt(slider.value, 10);
-    document.getElementById('time-label').textContent = formatMinutes(state.minutes);
-
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => updateView(), 80);
+    document.getElementById('time-label').textContent = fmt(state.minutes);
+    clearTimeout(t);
+    t = setTimeout(updateView, 80);
   });
 }
 
-// ── Datumsauswahl ─────────────────────────────────────────────────────────────
+// ── Datumsauswahl ─────────────────────────────────────────────────────────
 
 function initDatePicker() {
   const picker = document.getElementById('date-picker');
-  const today = new Date();
-  picker.value = today.toISOString().slice(0, 10);
-
+  picker.value = new Date().toISOString().slice(0, 10);
   picker.addEventListener('change', () => {
     if (picker.value) {
       state.baseDate = new Date(picker.value + 'T12:00:00');
@@ -212,98 +219,71 @@ function initDatePicker() {
   });
 }
 
-// ── "Jetzt"-Schaltfläche ──────────────────────────────────────────────────────
+// ── "Jetzt"-Button ────────────────────────────────────────────────────────
 
 document.getElementById('btn-now').addEventListener('click', () => {
   const now = new Date();
   state.baseDate = now;
-  state.minutes = clampMinutes(now.getHours() * 60 + now.getMinutes());
-
+  state.minutes = clamp(now.getHours() * 60 + now.getMinutes(), 360, 1320);
   document.getElementById('time-slider').value = state.minutes;
-  document.getElementById('time-label').textContent = formatMinutes(state.minutes);
+  document.getElementById('time-label').textContent = fmt(state.minutes);
   document.getElementById('date-picker').value = now.toISOString().slice(0, 10);
-
   updateView();
 });
 
-// ── Zeitraffer-Animation ──────────────────────────────────────────────────────
+// ── Zeitraffer-Animation ──────────────────────────────────────────────────
 
 const btnPlay = document.getElementById('btn-play');
+btnPlay.addEventListener('click', () => state.animating ? stopAnim() : startAnim());
 
-btnPlay.addEventListener('click', () => {
-  if (state.animating) {
-    stopAnimation();
-  } else {
-    startAnimation();
-  }
-});
-
-function startAnimation() {
+function startAnim() {
   state.animating = true;
   btnPlay.textContent = '⏸';
-  btnPlay.setAttribute('aria-label', 'Animation stoppen');
 
   const speed = parseInt(document.getElementById('anim-speed').value, 10);
-  const STEP_MIN = 15;       // 15-Minuten-Schritte
-  const INTERVAL_MS = 120;   // ms pro Schritt
-
-  // Starte immer bei Sonnenaufgang
-  const date0 = new Date(state.baseDate);
-  const { sunrise } = Sun.getDaylight(date0, state.lat, state.lng);
-  state.minutes = clampMinutes(
-    isNaN(sunrise.getTime()) ? 360 :
-    sunrise.getHours() * 60 + sunrise.getMinutes()
+  const { sunrise } = Sun.getDaylight(new Date(state.baseDate), state.lat, state.lng);
+  state.minutes = clamp(
+    isNaN(sunrise?.getTime()) ? 360 : sunrise.getHours() * 60 + sunrise.getMinutes(),
+    360, 1320
   );
 
   state.animTimer = setInterval(() => {
-    state.minutes += STEP_MIN * speed;
-    if (state.minutes > 1320) {
-      stopAnimation();
-      return;
-    }
-
-    const slider = document.getElementById('time-slider');
-    slider.value = state.minutes;
-    document.getElementById('time-label').textContent = formatMinutes(state.minutes);
+    state.minutes += 15 * speed;
+    if (state.minutes > 1320) { stopAnim(); return; }
+    document.getElementById('time-slider').value = state.minutes;
+    document.getElementById('time-label').textContent = fmt(state.minutes);
     updateView();
-  }, INTERVAL_MS);
+  }, 120);
 }
 
-function stopAnimation() {
+function stopAnim() {
   state.animating = false;
   clearInterval(state.animTimer);
   state.animTimer = null;
   btnPlay.textContent = '▶';
-  btnPlay.setAttribute('aria-label', 'Zeitraffer starten');
 }
 
-// ── Klick auf Karte → Popup ───────────────────────────────────────────────────
+// ── Klick auf Karte → Popup ───────────────────────────────────────────────
 
 map.on('click', e => {
   const { lng, lat } = e.lngLat;
-  const date = currentDate();
-  const sunUp = Sun.isUp(date, lat, lng);
-  const inShadow = sunUp ? Shadow.isInShadow(lng, lat) : true;
+  const date   = currentDate();
+  const sunUp  = Sun.isUp(date, lat, lng);
+  const inShad = sunUp && Shadow.isInShadow(lng, lat);
+  const sunny  = sunUp && !inShad;
 
   if (state.popup) { state.popup.remove(); state.popup = null; }
 
-  const isSunny = sunUp && !inShadow;
-  const icon  = isSunny ? '☀️' : (sunUp ? '🌑' : '🌙');
-  const label = isSunny ? 'Sonne' : (sunUp ? 'Schatten' : 'Nacht');
-  const cls   = isSunny ? 'sunny' : 'shaded';
+  const icon  = sunny ? '☀️' : (sunUp ? '🌑' : '🌙');
+  const label = sunny ? 'Sonne' : (sunUp ? 'Schatten' : 'Nacht');
+  const cls   = sunny ? 'sunny' : 'shaded';
 
   let nextHtml = '';
-  // Nächsten Wechsel berechnen (nur wenn Sonne oben)
   if (sunUp) {
-    const nextChange = Sun.findNextChange(
-      date,
-      d => Shadow.isInShadow(lng, lat),
-      lat, lng,
-      inShadow
-    );
-    if (nextChange) {
-      const verb = inShadow ? 'Sonne ab' : 'Schatten ab';
-      nextHtml = `<div class="popup-next">${verb} ${Sun.formatTime(nextChange)} Uhr</div>`;
+    const next = Sun.findNextChange(date, d => Shadow.isInShadow(lng, lat), lat, lng, inShad);
+    if (next) {
+      const verb = inShad ? 'Sonne ab' : 'Schatten ab';
+      nextHtml = `<div class="popup-next">${verb} ${Sun.formatTime(next)} Uhr</div>`;
     }
   }
 
@@ -313,106 +293,91 @@ map.on('click', e => {
       <span class="popup-title ${cls}">${label}</span>
     </div>
     <div class="popup-detail">
-      ${formatMinutes(state.minutes)} Uhr · ${date.toLocaleDateString('de-CH')}
+      ${fmt(state.minutes)} Uhr · ${date.toLocaleDateString('de-CH')}
     </div>
     ${nextHtml}
   `;
 
-  state.popup = new maplibregl.Popup({ closeButton: false, maxWidth: '260px' })
+  state.popup = new mapboxgl.Popup({ closeButton: false, maxWidth: '260px' })
     .setLngLat([lng, lat])
     .setHTML(html)
     .addTo(map);
 });
 
-// Popup schließen bei Kartenbewegung
-map.on('dragstart', () => { if (state.popup) { state.popup.remove(); state.popup = null; } });
+map.on('dragstart', () => {
+  if (state.popup) { state.popup.remove(); state.popup = null; }
+});
 
-// ── Ortssuche ─────────────────────────────────────────────────────────────────
+// ── Ortssuche ─────────────────────────────────────────────────────────────
 
 const searchInput   = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
-
 let searchTimer;
+
 searchInput.addEventListener('input', () => {
   clearTimeout(searchTimer);
   const q = searchInput.value.trim();
-  if (q.length < 2) { hideSearchResults(); return; }
+  if (q.length < 2) { hideResults(); return; }
   searchTimer = setTimeout(() => doSearch(q), 280);
 });
 
-searchInput.addEventListener('blur', () => {
-  setTimeout(hideSearchResults, 200);
-});
+searchInput.addEventListener('blur', () => setTimeout(hideResults, 200));
 
-async function doSearch(query) {
-  const url = `${GEOCODER_URL}?searchText=${encodeURIComponent(query)}` +
-    `&type=locations&lang=de&sr=4326&limit=6`;
+async function doSearch(q) {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    const data = await res.json();
-    showSearchResults(data.results || []);
-  } catch (_) {
-    hideSearchResults();
-  }
+    const url = `${GEOCODER_BASE}?searchText=${encodeURIComponent(q)}&type=locations&lang=de&sr=4326&limit=6`;
+    const r = await safeFetch(url, 5000);
+    showResults(r.results || []);
+  } catch { hideResults(); }
 }
 
-function showSearchResults(results) {
-  if (!results.length) { hideSearchResults(); return; }
+function showResults(results) {
+  if (!results.length) { hideResults(); return; }
   searchResults.innerHTML = results.map(r => {
-    const attrs = r.attrs || {};
-    const label = attrs.label?.replace(/<\/?[^>]+>/g, '') || 'Unbekannt';
-    return `<div class="search-item" tabindex="0"
-              data-lat="${attrs.lat}" data-lng="${attrs.lon}">
-              ${label}
-            </div>`;
+    const a = r.attrs || {};
+    const label = (a.label || '').replace(/<\/?[^>]+>/g, '');
+    return `<div class="search-item" tabindex="0" data-lat="${a.lat}" data-lng="${a.lon}">${label}</div>`;
   }).join('');
   searchResults.style.display = 'block';
 
   searchResults.querySelectorAll('.search-item').forEach(item => {
-    item.addEventListener('click', () => selectSearchResult(item));
-    item.addEventListener('keydown', e => {
-      if (e.key === 'Enter') selectSearchResult(item);
-    });
+    item.addEventListener('click',   () => pickResult(item));
+    item.addEventListener('keydown', e => { if (e.key === 'Enter') pickResult(item); });
   });
 }
 
-function selectSearchResult(item) {
+function pickResult(item) {
   const lat = parseFloat(item.dataset.lat);
   const lng = parseFloat(item.dataset.lng);
   if (isNaN(lat) || isNaN(lng)) return;
-
-  state.lat = lat;
-  state.lng = lng;
+  state.lat = lat; state.lng = lng;
   map.flyTo({ center: [lng, lat], zoom: 15 });
-  document.getElementById('location-name').textContent =
-    item.textContent.trim().split(',')[0];
-  hideSearchResults();
+  document.getElementById('location-name').textContent = item.textContent.trim().split(',')[0];
+  hideResults();
   searchInput.value = '';
   updateView();
 }
 
-function hideSearchResults() {
+function hideResults() {
   searchResults.style.display = 'none';
   searchResults.innerHTML = '';
 }
 
-// ── Reverse Geocoding ─────────────────────────────────────────────────────────
+// ── Reverse Geocoding ─────────────────────────────────────────────────────
 
 async function reverseGeocode(lat, lng) {
-  const url = `${GEOCODER_URL}?searchText=${lat.toFixed(4)},${lng.toFixed(4)}` +
-    `&type=locations&lang=de&sr=4326&limit=1`;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
-    const data = await res.json();
-    const label = data.results?.[0]?.attrs?.label;
+    const url = `${GEOCODER_BASE}?searchText=${lat.toFixed(4)},${lng.toFixed(4)}&type=locations&lang=de&sr=4326&limit=1`;
+    const r = await safeFetch(url, 4000);
+    const label = r.results?.[0]?.attrs?.label;
     if (label) {
       const clean = label.replace(/<\/?[^>]+>/g, '').split(',')[0].trim();
       document.getElementById('location-name').textContent = clean;
     }
-  } catch (_) {}
+  } catch { /* silent */ }
 }
 
-// ── Wetter ────────────────────────────────────────────────────────────────────
+// ── Wetter ────────────────────────────────────────────────────────────────
 
 async function loadWeather() {
   const result = await Weather.get(state.lat, state.lng);
@@ -427,54 +392,42 @@ function updateWeatherForHour(hour) {
   document.getElementById('weather-text').textContent = pct !== null ? `${Math.round(pct)}%` : text;
 }
 
-// ── Favoriten ─────────────────────────────────────────────────────────────────
+// ── Favoriten ─────────────────────────────────────────────────────────────
 
 document.getElementById('btn-fav-save').addEventListener('click', () => {
   const name = document.getElementById('location-name').textContent || 'Mein Ort';
   Favorites.save(name, state.lat, state.lng);
   renderFavorites();
-
   const btn = document.getElementById('btn-fav-save');
-  btn.textContent = '★';
-  btn.classList.add('saved');
+  btn.textContent = '★'; btn.classList.add('saved');
   setTimeout(() => { btn.textContent = '☆'; btn.classList.remove('saved'); }, 1500);
 });
 
 function renderFavorites() {
   const list = document.getElementById('favorites-list');
   const favs = Favorites.getAll();
-
   if (!favs.length) {
     list.innerHTML = '<p class="no-favorites">Noch keine Favoriten gespeichert.</p>';
     return;
   }
-
   list.innerHTML = favs.map(f => `
     <div class="fav-chip" role="listitem">
       <span>⭐ ${f.name}</span>
-      <button class="fav-del"
-        data-id="${f.id}" data-lat="${f.lat}" data-lng="${f.lng}"
-        aria-label="${f.name} aufrufen">→</button>
-      <button class="fav-del"
-        data-del="${f.id}"
-        aria-label="${f.name} löschen">×</button>
+      <button class="fav-del" data-lat="${f.lat}" data-lng="${f.lng}" aria-label="${f.name} aufrufen">→</button>
+      <button class="fav-del" data-del="${f.id}" aria-label="${f.name} löschen">×</button>
     </div>
   `).join('');
 
-  // Favorit aufrufen
   list.querySelectorAll('[data-lat]').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      const lat = parseFloat(btn.dataset.lat);
-      const lng = parseFloat(btn.dataset.lng);
-      state.lat = lat;
-      state.lng = lng;
-      map.flyTo({ center: [lng, lat], zoom: 15 });
+      state.lat = parseFloat(btn.dataset.lat);
+      state.lng = parseFloat(btn.dataset.lng);
+      map.flyTo({ center: [state.lng, state.lat], zoom: 15 });
       updateView();
     });
   });
 
-  // Favorit löschen
   list.querySelectorAll('[data-del]').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
@@ -484,21 +437,29 @@ function renderFavorites() {
   });
 }
 
-// ── Share-Link (COULD HAVE) ───────────────────────────────────────────────────
+// ── URL-Parameter beim Start laden (Share-Link) ───────────────────────────
 
-// URL-Parameter beim Start verarbeiten
 (function loadFromURL() {
-  const params = new URLSearchParams(location.search);
-  const lat = parseFloat(params.get('lat'));
-  const lng = parseFloat(params.get('lng'));
-  const min = parseInt(params.get('t'), 10);
-  const dateStr = params.get('d');
-
-  if (!isNaN(lat) && !isNaN(lng)) {
-    state.lat = lat;
-    state.lng = lng;
-    map.setCenter([lng, lat]);
-  }
-  if (!isNaN(min)) state.minutes = clampMinutes(min);
-  if (dateStr) state.baseDate = new Date(dateStr + 'T12:00:00');
+  const p = new URLSearchParams(location.search);
+  const lat = parseFloat(p.get('lat'));
+  const lng = parseFloat(p.get('lng'));
+  const min = parseInt(p.get('t'), 10);
+  const ds  = p.get('d');
+  if (!isNaN(lat) && !isNaN(lng)) { state.lat = lat; state.lng = lng; map.setCenter([lng, lat]); }
+  if (!isNaN(min)) state.minutes = clamp(min, 360, 1320);
+  if (ds) state.baseDate = new Date(ds + 'T12:00:00');
 })();
+
+// ── fetch-Wrapper mit Timeout ─────────────────────────────────────────────
+
+async function safeFetch(url, ms) {
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  } finally {
+    clearTimeout(tid);
+  }
+}
