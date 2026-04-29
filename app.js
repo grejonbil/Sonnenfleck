@@ -4,7 +4,7 @@
  * MapLibre GL JS mit swisstopo-Basiskarte (kein API-Token nötig).
  */
 
-const MAP_STYLE      = 'https://vectortiles.geo.admin.ch/styles/ch.swisstopo.leichte-basiskarte.vt/style.json';
+const MAP_STYLE      = 'https://tiles.openfreemap.org/styles/liberty';
 const ZURICH         = { lat: 47.3769, lng: 8.5417 };
 const GEOCODER_BASE  = 'https://api3.geo.admin.ch/rest/services/api/SearchServer';
 
