@@ -260,10 +260,9 @@ const Shadow = {
   // ── Karten-Layer & Beleuchtung ───────────────────────────────────────────
 
   /**
-   * Aktualisiert Sonnenbeleuchtung und 3D-Gebäude.
-   * Schatten-GeoJSON wird nur intern für isInShadow() verwendet, nicht gezeichnet.
-   * @param {mapboxgl.Map}              map
-   * @param {GeoJSON.FeatureCollection} geojson   – Schatten-Polygone (intern)
+   * Aktualisiert Schatten-Overlay, Sonnenbeleuchtung und 3D-Gebäude.
+   * @param {maplibregl.Map}            map
+   * @param {GeoJSON.FeatureCollection} geojson   – Schatten-Polygone
    * @param {{ azimuth: number, altitude: number }} sunPos
    */
   updateLayer(map, geojson, sunPos) {
@@ -271,8 +270,87 @@ const Shadow = {
     if (map.getLayer('shadow-layer'))  map.removeLayer('shadow-layer');
     if (map.getSource('shadow-source')) map.removeSource('shadow-source');
 
+    this._updateShadowOverlay(map, geojson, sunPos);
     this._updateSunLight(map, sunPos);
     this._update3DBuildings(map);
+  },
+
+  /**
+   * Zwei-Layer-Ansatz: zeigt wo die Sonne scheint (warm/golden),
+   * und dämpft Schattenbereiche (Halb- und Vollschatten).
+   *
+   * Layer 1 – Sonnen-Highlight: warmes Gold über der ganzen Karte (wenn Sonne oben)
+   * Layer 2 – Schatten-Overlay: dunkler Layer auf Schattenpolygonen → überlagert das Gold
+   *
+   * Ergebnis:
+   *   Volle Sonne   → goldener Schein  (nur Layer 1 sichtbar)
+   *   Halbschatten  → gedämpft-warm    (Layer 1 + einmal Layer 2)
+   *   Vollschatten  → kühles Dunkel    (Layer 1 + mehrfach Layer 2 gestapelt)
+   *   Nacht         → neutrale Karte   (beide Layer leer)
+   */
+  _updateShadowOverlay(map, geojson, sunPos) {
+    const SUN_SRC    = 'sun-zone-src';
+    const SUN_LYR    = 'sun-zone-lyr';
+    const SHADOW_SRC = 'shadow-overlay-src';
+    const SHADOW_LYR = 'shadow-overlay-lyr';
+
+    const nightOrNoSun = !sunPos || sunPos.altitude <= 0.017;
+    const emptyFC = { type: 'FeatureCollection', features: [] };
+
+    // Grosses Polygon das die ganze Schweiz abdeckt als Sonnenzone-Basis
+    const CH_BBOX = {
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', geometry: {
+        type: 'Polygon',
+        coordinates: [[[5.5, 45.5], [11.0, 45.5], [11.0, 48.2], [5.5, 48.2], [5.5, 45.5]]]
+      }, properties: {} }]
+    };
+
+    const sunData    = nightOrNoSun ? emptyFC : CH_BBOX;
+    const shadowData = (!nightOrNoSun && geojson) ? geojson : emptyFC;
+
+    // Layer-Einfügepunkt einmalig ermitteln
+    const layers = map.getStyle()?.layers ?? [];
+    const insertBefore = layers.find(l => l.type === 'symbol')?.id;
+
+    // ── Layer 1: Sonnen-Highlight (unterste Ebene) ──────────────────────────
+    if (map.getSource(SUN_SRC)) {
+      map.getSource(SUN_SRC).setData(sunData);
+    } else {
+      try {
+        map.addSource(SUN_SRC, { type: 'geojson', data: sunData });
+        map.addLayer({
+          id: SUN_LYR, type: 'fill', source: SUN_SRC,
+          paint: {
+            'fill-color':   '#f5c518',
+            'fill-opacity': 0.26,
+            'fill-antialias': true,
+          }
+        }, insertBefore);
+      } catch (err) {
+        console.warn('Sonnen-Highlight konnte nicht hinzugefügt werden:', err);
+      }
+    }
+
+    // ── Layer 2: Schatten-Overlay (überlagert das Gold) ─────────────────────
+    // Tiefe Opacity pro Polygon → Überlappungen stapeln sich automatisch dunkler
+    if (map.getSource(SHADOW_SRC)) {
+      map.getSource(SHADOW_SRC).setData(shadowData);
+    } else {
+      try {
+        map.addSource(SHADOW_SRC, { type: 'geojson', data: shadowData });
+        map.addLayer({
+          id: SHADOW_LYR, type: 'fill', source: SHADOW_SRC,
+          paint: {
+            'fill-color':   '#1a2a45',
+            'fill-opacity': 0.22,
+            'fill-antialias': true,
+          }
+        }, insertBefore);
+      } catch (err) {
+        console.warn('Schatten-Overlay konnte nicht hinzugefügt werden:', err);
+      }
+    }
   },
 
   /** Setzt die Mapbox-Lichtquelle auf die echte Sonnenposition. */
