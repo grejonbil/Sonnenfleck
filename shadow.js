@@ -135,10 +135,11 @@ const Shadow = {
           coords[0][1] !== coords[coords.length - 1][1]) {
         coords.push(coords[0]);
       }
+      const tags = el.tags || {};
       features.push({
         type: 'Feature',
         geometry: { type: 'Polygon', coordinates: [coords] },
-        properties: { ...(el.tags || {}) }
+        properties: { ...tags, height_m: this._height(tags) }
       });
     }
     return { type: 'FeatureCollection', features };
@@ -256,30 +257,73 @@ const Shadow = {
     return (A[0] - O[0]) * (B[1] - O[1]) - (A[1] - O[1]) * (B[0] - O[0]);
   },
 
-  // ── MapLibre-Layer ───────────────────────────────────────────────────────
+  // ── Karten-Layer & Beleuchtung ───────────────────────────────────────────
 
   /**
-   * Fügt den Schatten-Layer hinzu oder aktualisiert ihn.
-   * @param {maplibregl.Map}         map
-   * @param {GeoJSON.FeatureCollection} geojson
+   * Aktualisiert Sonnenbeleuchtung und 3D-Gebäude.
+   * Schatten-GeoJSON wird nur intern für isInShadow() verwendet, nicht gezeichnet.
+   * @param {mapboxgl.Map}              map
+   * @param {GeoJSON.FeatureCollection} geojson   – Schatten-Polygone (intern)
+   * @param {{ azimuth: number, altitude: number }} sunPos
    */
-  updateLayer(map, geojson) {
-    const SRC = 'shadow-source';
-    const LYR = 'shadow-layer';
+  updateLayer(map, geojson, sunPos) {
+    // Alten Shadow-Layer entfernen falls vorhanden (Legacy)
+    if (map.getLayer('shadow-layer'))  map.removeLayer('shadow-layer');
+    if (map.getSource('shadow-source')) map.removeSource('shadow-source');
 
-    if (map.getSource(SRC)) {
-      map.getSource(SRC).setData(geojson);
-    } else {
-      map.addSource(SRC, { type: 'geojson', data: geojson });
+    this._updateSunLight(map, sunPos);
+    this._update3DBuildings(map);
+  },
+
+  /** Setzt die Mapbox-Lichtquelle auf die echte Sonnenposition. */
+  _updateSunLight(map, sunPos) {
+    if (!sunPos || sunPos.altitude <= 0.017) {
+      // Nacht: kühles Dämmerlicht
+      map.setLight({ anchor: 'map', color: '#8090a8', intensity: 0.18, position: [1.15, 0, 80] });
+      return;
+    }
+    // SunCalc: 0=Süd, +π/2=West → Mapbox-Azimut: 0=Nord, +90=Ost
+    const azDeg    = ((sunPos.azimuth * 180 / Math.PI) + 180 + 360) % 360;
+    const altDeg   = sunPos.altitude * 180 / Math.PI;
+    // Mapbox polar: 0=Zenit, 90=Horizont
+    const polar    = Math.max(5, 90 - altDeg);
+    // Warm-orange bei flacher Sonne, weißlich bei hohem Stand
+    const color    = altDeg < 12 ? '#ffbe6e' : '#fff9e6';
+    const intensity = Math.min(0.7, 0.22 + (altDeg / 90) * 0.48);
+    map.setLight({ anchor: 'map', color, intensity, position: [1.15, azDeg, polar] });
+  },
+
+  /** Fügt 3D-Gebäude aus eigenem GeoJSON (Overpass/swisstopo) hinzu oder aktualisiert sie. */
+  _update3DBuildings(map) {
+    const SRC = 'buildings-3d-src';
+    const LYR = 'buildings-3d-lyr';
+    if (!this._buildings) return;
+
+    try {
+      if (map.getSource(SRC)) {
+        map.getSource(SRC).setData(this._buildings);
+        return;
+      }
+      const layers = map.getStyle()?.layers ?? [];
+      const firstSymbol = layers.find(l => l.type === 'symbol');
+      map.addSource(SRC, { type: 'geojson', data: this._buildings });
       map.addLayer({
         id: LYR,
-        type: 'fill',
+        type: 'fill-extrusion',
         source: SRC,
         paint: {
-          'fill-color': '#1a2a3a',
-          'fill-opacity': 0.5
+          'fill-extrusion-color': '#d4cbb8',
+          'fill-extrusion-height': [
+            'interpolate', ['linear'], ['zoom'],
+            14, 0,
+            14.5, ['coalesce', ['get', 'height_m'], 9]
+          ],
+          'fill-extrusion-base': 0,
+          'fill-extrusion-opacity': 0.88
         }
-      });
+      }, firstSymbol?.id);
+    } catch (err) {
+      console.warn('3D-Gebäude konnten nicht hinzugefügt werden:', err);
     }
   },
 

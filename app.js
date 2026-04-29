@@ -1,23 +1,11 @@
 /**
  * app.js – SonnenCheck Schweiz · Hauptlogik
  *
- * Mapbox GL JS v3 mit Mapbox-Basiskarte.
- * Token bitte im Mapbox-Dashboard auf die App-Domain beschränken.
+ * MapLibre GL JS mit swisstopo-Basiskarte (kein API-Token nötig).
  */
 
-// ── Token & Konfiguration ─────────────────────────────────────────────────
-
-// Mapbox public token (pk.*) — restrict to your domains in Mapbox Dashboard → Tokens.
-// Split to satisfy GitHub push-protection (public tokens are intentionally client-side).
-const MAPBOX_TOKEN = [
-  'pk.eyJ1IjoiemhncmJpIiwiYSI6ImN',
-  'ta3h4MHhxMTAxYWIzZHNlaGxpank0MHoifQ.',
-  'ojQCWJp1rX6WMjW5NNphyg'
-].join('');
-mapboxgl.accessToken = MAPBOX_TOKEN;
-
+const MAP_STYLE      = 'https://vectortiles.geo.admin.ch/styles/ch.swisstopo.leichte-basiskarte.vt/style.json';
 const ZURICH         = { lat: 47.3769, lng: 8.5417 };
-const MAP_STYLE      = 'mapbox://styles/mapbox/streets-v12';
 const GEOCODER_BASE  = 'https://api3.geo.admin.ch/rest/services/api/SearchServer';
 
 // ── App-Zustand ───────────────────────────────────────────────────────────
@@ -30,8 +18,10 @@ const state = {
   sunPos:        null,
   animating:     false,
   animTimer:     null,
-  weatherHourly: [],
-  popup:         null,
+  weatherHourly:     [],
+  weatherCodeByHour: [],
+  weatherTempByHour: [],
+  popup:             null,
   mapReady:      false,
 };
 
@@ -69,7 +59,7 @@ document.getElementById('btn-splash-skip').addEventListener('click', hideSplash)
 
 // ── Karte ─────────────────────────────────────────────────────────────────
 
-const map = new mapboxgl.Map({
+const map = new maplibregl.Map({
   container:  'map',
   style:      MAP_STYLE,
   center:     [ZURICH.lng, ZURICH.lat],
@@ -77,11 +67,10 @@ const map = new mapboxgl.Map({
   maxBounds:  [[5.5, 45.5], [11.0, 48.2]],
 });
 
-map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-right');
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
-// Fehlerbehandlung (z.B. Token ungültig)
 map.on('error', err => {
-  console.error('Mapbox GL Fehler:', err);
+  console.error('MapLibre GL Fehler:', err);
 });
 
 // Karte vollständig geladen
@@ -145,10 +134,10 @@ async function updateView() {
     const date = currentDate();
     state.sunPos = Sun.getPosition(date, state.lat, state.lng);
 
-    // Gebäude laden + Schatten berechnen
+    // Gebäude laden + Schatten berechnen (intern für Popup-Logik)
     await Shadow.loadBuildings(map);
     const geojson = Shadow.calculate(state.sunPos);
-    Shadow.updateLayer(map, geojson);
+    Shadow.updateLayer(map, geojson, state.sunPos);
 
     // UI
     updateStatusPill(date);
@@ -274,16 +263,22 @@ map.on('click', e => {
 
   if (state.popup) { state.popup.remove(); state.popup = null; }
 
-  const icon  = sunny ? '☀️' : (sunUp ? '🌑' : '🌙');
-  const label = sunny ? 'Sonne' : (sunUp ? 'Schatten' : 'Nacht');
+  const icon  = sunny ? '☀️' : (sunUp ? '🏙️' : '🌙');
+  const label = sunny ? 'Sonne' : (sunUp ? 'Im Schatten' : 'Nacht');
   const cls   = sunny ? 'sunny' : 'shaded';
 
   let nextHtml = '';
-  if (sunUp) {
-    const next = Sun.findNextChange(date, d => Shadow.isInShadow(lng, lat), lat, lng, inShad);
-    if (next) {
-      const verb = inShad ? 'Sonne ab' : 'Schatten ab';
-      nextHtml = `<div class="popup-next">${verb} ${Sun.formatTime(next)} Uhr</div>`;
+  if (sunny) {
+    const { sunset } = Sun.getDaylight(date, lat, lng);
+    const remainMs  = sunset.getTime() - date.getTime();
+    if (remainMs > 0) {
+      const remainMin = Math.round(remainMs / 60000);
+      const h = Math.floor(remainMin / 60);
+      const m = remainMin % 60;
+      const dur = h > 0
+        ? `${h} Std${m > 0 ? ' ' + m + ' Min' : ''}`
+        : `${m} Min`;
+      nextHtml = `<div class="popup-next">☀️ Noch ${dur} Sonne</div>`;
     }
   }
 
@@ -298,7 +293,7 @@ map.on('click', e => {
     ${nextHtml}
   `;
 
-  state.popup = new mapboxgl.Popup({ closeButton: false, maxWidth: '260px' })
+  state.popup = new maplibregl.Popup({ closeButton: false, maxWidth: '260px' })
     .setLngLat([lng, lat])
     .setHTML(html)
     .addTo(map);
@@ -381,15 +376,18 @@ async function reverseGeocode(lat, lng) {
 
 async function loadWeather() {
   const result = await Weather.get(state.lat, state.lng);
-  state.weatherHourly = result.cloudCoverByHour || [];
+  state.weatherHourly     = result.cloudCoverByHour  || [];
+  state.weatherCodeByHour = result.weatherCodeByHour || [];
+  state.weatherTempByHour = result.temperatureByHour || [];
   updateWeatherForHour(Math.floor(state.minutes / 60));
 }
 
 function updateWeatherForHour(hour) {
-  const pct = Weather.cloudAtHour(state.weatherHourly, hour);
-  const { icon, text } = Weather.describe(pct);
+  const code = Weather.atHour(state.weatherCodeByHour, hour);
+  const temp = Weather.atHour(state.weatherTempByHour, hour);
+  const { icon } = Weather.describeCode(code);
   document.getElementById('weather-icon').textContent = icon;
-  document.getElementById('weather-text').textContent = pct !== null ? `${Math.round(pct)}%` : text;
+  document.getElementById('weather-text').textContent = temp !== null ? `${Math.round(temp)}°` : '—';
 }
 
 // ── Favoriten ─────────────────────────────────────────────────────────────
@@ -449,6 +447,21 @@ function renderFavorites() {
   if (!isNaN(min)) state.minutes = clamp(min, 360, 1320);
   if (ds) state.baseDate = new Date(ds + 'T12:00:00');
 })();
+
+// ── Impressum Modal ───────────────────────────────────────────────────────
+
+document.getElementById('btn-impressum').addEventListener('click', () => {
+  document.getElementById('impressum-overlay').removeAttribute('hidden');
+});
+
+document.getElementById('btn-impressum-close').addEventListener('click', () => {
+  document.getElementById('impressum-overlay').setAttribute('hidden', '');
+});
+
+document.getElementById('impressum-overlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget)
+    e.currentTarget.setAttribute('hidden', '');
+});
 
 // ── fetch-Wrapper mit Timeout ─────────────────────────────────────────────
 

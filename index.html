@@ -8,9 +8,9 @@
   <title>SonnenCheck ☀️</title>
   <link rel="manifest" href="manifest.json">
 
-  <!-- Mapbox GL JS v3 -->
-  <link href="https://api.mapbox.com/mapbox-gl-js/v3.10.0/mapbox-gl.css" rel="stylesheet">
-  <script src="https://api.mapbox.com/mapbox-gl-js/v3.10.0/mapbox-gl.js"></script>
+  <!-- MapLibre GL JS (kein API-Token nötig) -->
+  <link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet">
+  <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
 
   <!-- SunCalc -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
@@ -54,7 +54,7 @@
       </div>
       <p class="splash-hint">Karte wird geladen…</p>
 
-      <button id="btn-splash-skip" class="splash-btn" aria-label="App starten">
+      <button type="button" id="btn-splash-skip" class="splash-btn" aria-label="App starten">
         Jetzt erkunden
       </button>
     </div>
@@ -103,7 +103,7 @@
   </div>
 
   <!-- Standort-Button -->
-  <button id="btn-locate" class="map-button" title="Meinen Standort anzeigen" aria-label="Meinen Standort">📍</button>
+  <button type="button" id="btn-locate" class="map-button" title="Meinen Standort anzeigen" aria-label="Meinen Standort">📍</button>
 
   <!-- Bottom Sheet -->
   <div id="bottom-sheet" role="complementary" aria-label="Steuerung">
@@ -136,7 +136,7 @@
     <div class="control-row control-row--secondary">
       <input type="date" id="date-picker" aria-label="Datum auswählen">
       <div class="anim-controls">
-        <button id="btn-play" class="btn-circle" title="Animation starten" aria-label="Zeitraffer starten">▶</button>
+        <button type="button" id="btn-play" class="btn-circle" title="Animation starten" aria-label="Zeitraffer starten">▶</button>
         <select id="anim-speed" aria-label="Animationsgeschwindigkeit">
           <option value="1">1×</option>
           <option value="2" selected>2×</option>
@@ -144,13 +144,88 @@
           <option value="8">8×</option>
         </select>
       </div>
-      <button id="btn-now" class="btn-pill" aria-label="Aktuelle Uhrzeit">Jetzt</button>
-      <button id="btn-fav-save" class="btn-circle btn-circle--outline" title="Als Favorit speichern" aria-label="Favorit speichern">☆</button>
+      <button type="button" id="btn-now" class="btn-pill" aria-label="Aktuelle Uhrzeit">Jetzt</button>
+      <button type="button" id="btn-fav-save" class="btn-circle btn-circle--outline" title="Als Favorit speichern" aria-label="Favorit speichern">☆</button>
     </div>
 
     <!-- Favoriten -->
     <div id="favorites-section" aria-label="Favoriten">
       <div id="favorites-list" role="list"></div>
+    </div>
+
+    <!-- Footer -->
+    <div class="sheet-footer">
+      <button type="button" id="btn-impressum" class="link-btn">Impressum &amp; Datenschutz</button>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────── IMPRESSUM MODAL ── -->
+  <div id="impressum-overlay" hidden role="dialog" aria-modal="true" aria-label="Impressum">
+    <div id="impressum-panel">
+      <button type="button" id="btn-impressum-close" aria-label="Schliessen">✕</button>
+      <div class="impressum-content">
+
+        <h2>☀️ SonnenCheck</h2>
+        <p>Interaktive Sonnenkarte für die Schweiz — zeigt wo die Sonne scheint, Sonnenzeiten und aktuelle Wettervorhersage.</p>
+
+        <h3>Betreiber</h3>
+        <p>
+          Gregory Biland<br>
+          Dienerstrasse 32<br>
+          8004 Zürich<br>
+          Schweiz<br>
+          <a href="https://github.com/grejonbil" target="_blank" rel="noopener">github.com/grejonbil</a>
+        </p>
+
+        <h3>Datenquellen</h3>
+        <ul class="source-list">
+          <li>
+            <span>🌤 Wetter</span>
+            <a href="https://open-meteo.com/en/docs/meteoswiss-api" target="_blank" rel="noopener">Open-Meteo · MeteoSchweiz ICON-CH1-EPS</a>
+          </li>
+          <li>
+            <span>🗺 Karte</span>
+            <a href="https://www.swisstopo.admin.ch" target="_blank" rel="noopener">swisstopo Leichte Basiskarte</a>
+          </li>
+          <li>
+            <span>📍 Geocoding</span>
+            <a href="https://api3.geo.admin.ch" target="_blank" rel="noopener">swisstopo API (geo.admin.ch)</a>
+          </li>
+          <li>
+            <span>🏙 Gebäude 3D</span>
+            <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap via Overpass API</a>
+          </li>
+          <li>
+            <span>☀️ Sonnenberechnung</span>
+            <a href="https://github.com/mourner/suncalc" target="_blank" rel="noopener">SunCalc.js (V. Agafonkin)</a>
+          </li>
+          <li>
+            <span>🖥 Kartenbibliothek</span>
+            <a href="https://maplibre.org" target="_blank" rel="noopener">MapLibre GL JS</a>
+          </li>
+        </ul>
+
+        <h3>Datenschutz</h3>
+        <p>Diese App speichert keine personenbezogenen Daten auf einem Server.</p>
+        <ul>
+          <li>Favoritenorte werden lokal im Browser (localStorage) gespeichert.</li>
+          <li>Der GPS-Standort wird nur bei expliziter Anfrage verwendet und nicht dauerhaft gespeichert.</li>
+          <li>Beim Laden der Karte, der Wetterdaten und der Ortssuche werden Koordinaten an swisstopo und Open-Meteo übertragen.</li>
+          <li>Es werden keine Cookies, keine Analytics und keine Tracking-Dienste eingesetzt.</li>
+        </ul>
+
+        <h3>Haftungsausschluss</h3>
+        <p>Die Wetter- und Sonnenvorhersagen werden von Drittanbietern bereitgestellt. Es wird keine Gewähr für die Richtigkeit, Vollständigkeit oder Aktualität der Informationen übernommen. Die App dient ausschliesslich der Information.</p>
+
+        <h3>Lizenzen</h3>
+        <ul>
+          <li>MapLibre GL JS – BSD-2-Clause</li>
+          <li>SunCalc.js – BSD-2-Clause</li>
+          <li>OpenStreetMap-Daten – ODbL</li>
+          <li>swisstopo-Geodaten – <a href="https://www.swisstopo.admin.ch/de/nutzungsbedingungen-kostenlose-geodaten" target="_blank" rel="noopener">Nutzungsbedingungen swisstopo</a></li>
+        </ul>
+
+      </div>
     </div>
   </div>
 
