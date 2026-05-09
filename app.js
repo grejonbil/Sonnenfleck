@@ -116,10 +116,16 @@ document.getElementById('btn-locate').addEventListener('click', locateUser);
 
 // ── Kartenbewegung ────────────────────────────────────────────────────────
 
+let _geocodeTimer;
 async function onMapMoved() {
   const c = map.getCenter();
   state.lat = c.lat;
   state.lng = c.lng;
+
+  // Reverse geocoding gedrosselt (max. einmal alle 1.5 s)
+  clearTimeout(_geocodeTimer);
+  _geocodeTimer = setTimeout(() => reverseGeocode(state.lat, state.lng), 1500);
+
   await updateView();
 }
 
