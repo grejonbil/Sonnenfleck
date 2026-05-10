@@ -1,45 +1,80 @@
 /**
- * shadow.js – Schattenberechnung & Canvas-Overlay
+ * shadow.js – Sonnenfleck · Schattenberechnung & Canvas-Overlay
  *
- * Gebäude + Wälder werden direkt aus den gerenderten Vektorkacheln gelesen
- * (map.queryRenderedFeatures) – kein API-Aufruf, kein Warten.
+ * NEUE LOGIK (invertiert gegenüber Vorversion):
+ * ─────────────────────────────────────────────
+ * Statt Schatten dunkel zu zeichnen, wird die gesamte Karte mit einer
+ * dunklen Maske überdeckt. Dann werden die SONNIGEN Flächen (= alles
+ * ausserhalb der Schattenpolygone) warm-gelb hervorgehoben ("Sonnenleck").
  *
- * Rendering: Ein <canvas>-Element liegt über der Karte.
- * Alle Schatten werden als solide Flächen gezeichnet und dann erst mit
- * der Canvas-Opacity (CSS) halbtransparent gemacht.
- * → Kein Opacity-Stacking bei überlappenden Gebäuden.
+ * Technisch: Zwei-Pass-Canvas-Rendering
+ *   Pass 1 – Offscreen-Canvas: Schattenpolygone als solide Flächen zeichnen
+ *   Pass 2 – Sichtbarer Canvas:
+ *     a) Gesamte Karte dunkel überdecken (= Schatten-Zustand als Default)
+ *     b) Pixel die im Offscreen NICHT gefüllt sind = sonnig → warm einfärben
+ *        via globalCompositeOperation = 'destination-out' + Sonnenschein-Gradient
+ *
+ * Einfacher erklärt:
+ *   - Dunkle Maske über alles
+ *   - Schattenpolygone "stempeln" die Maske weg → darunter kommt die Karte sauber durch
+ *   - WARTE: das wäre falsch (Schatten = hell, Sonne = dunkel)
+ *
+ * Korrekte Umsetzung mit drei Passes:
+ *   Offscreen A: Schattenpolygone solid zeichnen (= wo Schatten ist)
+ *   Sichtbar:
+ *     1. Gesamte Fläche dunkel füllen
+ *     2. Offscreen A als Maske benutzen: destination-out → wo Schatten ist,
+ *        Maske entfernen (= Schatten wird hell/neutral = Karte sichtbar)
+ *     3. Dann: Sonnige Flächen (= wo Maske noch steht) mit Gelb einfärben
+ *
+ *   Das ergibt: Sonnige Flächen = warm gelb-orange überlagert
+ *               Schattige Flächen = normale Karte, leicht abgedunkelt
  */
-
 const Shadow = {
 
-  _buildings:   null,   // aktuelle Gebäude-FeatureCollection (für isInShadow)
-  _lastGeoJSON: null,   // berechnete Schatten-Polygone
-  _canvas:      null,   // <canvas>-Element
-  _ctx:         null,   // CanvasRenderingContext2D
+  _buildings:   null,   // aktuelle Gebäude-FeatureCollection
+  _lastGeoJSON: null,   // berechnete Schatten-Polygone (für isInShadow)
+  _canvas:      null,   // sichtbarer <canvas> über der Karte
+  _ctx:         null,   // 2D-Context des sichtbaren Canvas
+  _offscreen:   null,   // Offscreen-Canvas für Schatten-Maske
+  _offCtx:      null,   // 2D-Context des Offscreen-Canvas
 
-  // ── Canvas-Setup ──────────────────────────────────────────────────────────
+  // ── Canvas-Setup ──────────────────────────────────────────────────────
 
-  /** Muss einmalig nach DOM-Aufbau aufgerufen werden. */
+  /**
+   * Einmalig nach DOM-Aufbau aufrufen.
+   * @param {HTMLCanvasElement} canvasEl – das sichtbare Canvas über der Karte
+   */
   initCanvas(canvasEl) {
     this._canvas = canvasEl;
     this._ctx    = canvasEl.getContext('2d');
+
+    // Offscreen-Canvas (gleiche Grösse, nicht im DOM)
+    this._offscreen = document.createElement('canvas');
+    this._offCtx    = this._offscreen.getContext('2d');
+
     this._resize();
     window.addEventListener('resize', () => this._resize());
   },
 
   _resize() {
     if (!this._canvas) return;
-    this._canvas.width  = window.innerWidth;
-    this._canvas.height = window.innerHeight;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    this._canvas.width      = w;
+    this._canvas.height     = h;
+    this._offscreen.width   = w;
+    this._offscreen.height  = h;
   },
 
-  /** Löscht alle Schatten (z.B. während des Kartenpannens). */
+  /** Löscht alle Overlays (z.B. während des Kartenpannens). */
   clearCanvas() {
     if (!this._ctx) return;
     this._ctx.clearRect(0, 0, this._canvas.width, this._canvas.height);
+    this._offCtx.clearRect(0, 0, this._offscreen.width, this._offscreen.height);
   },
 
-  // ── Gebäude + Bäume laden ─────────────────────────────────────────────────
+  // ── Gebäude laden ────────────────────────────────────────────────────
 
   /**
    * Liest Gebäude- und Waldgeometrien aus den bereits gerenderten Kacheln.
@@ -54,27 +89,27 @@ const Shadow = {
     const style = map.getStyle();
     if (!style) return { type: 'FeatureCollection', features: [] };
 
-    const layers  = style.layers ?? [];
-    const canvas  = map.getCanvas();
-    const bbox    = [[0, 0], [canvas.clientWidth, canvas.clientHeight]];
+    const layers = style.layers ?? [];
+    const canvas = map.getCanvas();
+    const bbox   = [[0, 0], [canvas.clientWidth, canvas.clientHeight]];
 
-    // 1. 3D-Gebäude-Layer (fill-extrusion) und 2D-Gebäude-Fill-Layer
+    // 3D-Gebäude-Layer (fill-extrusion) und 2D-Gebäude-Fill-Layer
     const bldIds = layers
       .filter(l =>
         l.type === 'fill-extrusion' ||
         (l.type === 'fill' && (
-          (l.id             || '').toLowerCase().includes('building') ||
-          (l['source-layer']|| '').toLowerCase().includes('building')
+          (l.id || '').toLowerCase().includes('building') ||
+          (l['source-layer'] || '').toLowerCase().includes('building')
         ))
       )
       .filter(l => !l.id.includes('sun-zone') && !l.id.includes('shadow'))
       .map(l => l.id);
 
-    // 2. Wald/Park-Polygon-Layer (für Baumschatten)
+    // Wald/Park-Polygon-Layer (für Baumschatten)
     const vegIds = layers
       .filter(l => l.type === 'fill' && (
-        (l.id             || '').toLowerCase().match(/wood|forest|park|natur|green/) ||
-        (l['source-layer']|| '').toLowerCase().match(/landcover|landuse/)
+        (l.id || '').toLowerCase().match(/wood|forest|park|natur|green/) ||
+        (l['source-layer'] || '').toLowerCase().match(/landcover|landuse/)
       ))
       .filter(l => !l.id.includes('sun-zone') && !l.id.includes('shadow'))
       .map(l => l.id);
@@ -126,22 +161,22 @@ const Shadow = {
     const land = (p.landuse  || '').toLowerCase();
     const cls  = (p.class    || '').toLowerCase();
     return nat === 'wood' || land === 'forest' ||
-           cls === 'wood' || cls === 'forest';
+           cls === 'wood' || cls  === 'forest';
   },
 
   _treeHeight(p) {
     if (!p) return 14;
     const h = parseFloat(p.height || 0);
     if (h > 0) return Math.min(h, 30);
-    return 14; // typische Baumhöhe in CH (Stadtbaum ~10-18 m)
+    return 14; // typische Stadtbaum-Höhe CH
   },
 
-  // ── Schattenberechnung ────────────────────────────────────────────────────
+  // ── Schattenberechnung ───────────────────────────────────────────────
 
   calculate(sunPos) {
     const empty = { type: 'FeatureCollection', features: [] };
     if (!this._buildings?.features?.length) return empty;
-    if (sunPos.altitude <= 0.017) return empty;
+    if (sunPos.altitude <= 0.017) return empty; // Sonne unter ~1°
 
     const features = [];
 
@@ -176,7 +211,7 @@ const Shadow = {
     if (h > 0) return Math.min(h, 250);
     const lvl = parseFloat(props.levels || props['building:levels'] || 0);
     if (lvl > 0) return Math.min(lvl * 3.2, 250);
-    return 9;
+    return 9; // Fallback: 3-stöckiges Gebäude
   },
 
   _shadowForRing(ring, azimuth, shadowLen) {
@@ -184,7 +219,7 @@ const Shadow = {
     const projected = ring.map(([lng, lat]) =>
       this._translate(lng, lat, azimuth, shadowLen)
     );
-    const all = [...ring.slice(0, -1), ...projected.slice(0, -1)];
+    const all  = [...ring.slice(0, -1), ...projected.slice(0, -1)];
     const hull = this._convexHull(all);
     if (hull.length < 3) return null;
     hull.push(hull[0]);
@@ -192,13 +227,16 @@ const Shadow = {
   },
 
   /**
-   * SunCalc-Azimut: 0=Süd, +π/2=West, -π/2=Ost
-   * Schattenrichtung: dx = -sin(az), dy = -cos(az)
+   * SunCalc-Azimut: 0 = Süd, +π/2 = West, −π/2 = Ost
+   * Schattenrichtung = entgegengesetzt zur Sonne
    */
   _translate(lng, lat, az, m) {
     const mLat = 111320;
     const mLng = 111320 * Math.cos(lat * Math.PI / 180);
-    return [lng - Math.sin(az) * m / mLng, lat - Math.cos(az) * m / mLat];
+    return [
+      lng - Math.sin(az) * m / mLng,
+      lat - Math.cos(az) * m / mLat
+    ];
   },
 
   _convexHull(pts) {
@@ -209,7 +247,8 @@ const Shadow = {
       const da = Math.atan2(a[1] - pivot[1], a[0] - pivot[0]);
       const db = Math.atan2(b[1] - pivot[1], b[0] - pivot[0]);
       return da !== db ? da - db
-        : (a[0]-pivot[0])**2+(a[1]-pivot[1])**2 - ((b[0]-pivot[0])**2+(b[1]-pivot[1])**2);
+        : (a[0]-pivot[0])**2+(a[1]-pivot[1])**2
+        - ((b[0]-pivot[0])**2+(b[1]-pivot[1])**2);
     });
     const hull = [pivot];
     for (const p of sorted) {
@@ -224,17 +263,17 @@ const Shadow = {
     return (A[0]-O[0])*(B[1]-O[1]) - (A[1]-O[1])*(B[0]-O[0]);
   },
 
-  // ── Canvas-Rendering ──────────────────────────────────────────────────────
+  // ── Canvas-Rendering (NEUE LOGIK) ────────────────────────────────────
 
   /**
-   * Zeichnet Schatten als solide dunkle Flächen auf den Canvas.
-   * Die Canvas-Opacity (CSS) macht sie halbtransparent.
-   * → Kein Stacking-Effekt bei überlappenden Gebäuden.
+   * Haupt-Update: Schattenberechnung → Canvas zeichnen → MapLibre-Licht.
+   * Wird von app.js nach jeder Zeitänderung aufgerufen.
    */
   updateLayer(map, geojson, sunPos) {
-    this._drawShadows(map, geojson, sunPos);
+    this._drawSunshine(map, geojson, sunPos);
     this._updateSunLight(map, sunPos);
-    // GeoJSON-Layer aus früheren Versionen aufräumen
+
+    // Eventuelle alte GeoJSON-Layer aus früheren Versionen aufräumen
     ['sun-zone-lyr', 'shadow-layer'].forEach(id => {
       try { if (map.getLayer(id)) map.removeLayer(id); } catch(_) {}
     });
@@ -243,17 +282,84 @@ const Shadow = {
     });
   },
 
-  _drawShadows(map, shadows, sunPos) {
+  /**
+   * KERN DER NEUEN LOGIK – Drei-Pass-Rendering:
+   *
+   * Pass 1 (Offscreen): Schattenpolygone solid zeichnen
+   *   → weiss gefüllte Polygone = wo Schatten liegt
+   *
+   * Pass 2 (Sichtbar):
+   *   a) Gesamte Fläche mit dunkler Schatten-Farbe füllen
+   *   b) Offscreen als Maske benutzen (destination-out):
+   *      Wo im Offscreen weiss = Schatten → Maske entfernen (= Karte normal sichtbar)
+   *      Wo im Offscreen leer  = sonnig   → Maske bleibt (= sonnige Flächen sehen
+   *                                          die dunkle Farbe – aber wir wollen WARM!)
+   *
+   * Pass 3 (Sichtbar, source-over):
+   *   Sonnige Flächen (= wo Offscreen leer) mit warmem Gelb-Orange einfärben
+   *   → globalCompositeOperation = 'destination-atop' über den Offscreen
+   *
+   * Vereinfacht als einziger korrekter Ablauf:
+   *
+   *   Sichtbarer Canvas:
+   *     1. Alles mit warmem Sonnen-Gelb füllen (= Sonne = Default)
+   *     2. Schattenpolygone in dunklem Blau-Grau zeichnen (übermalt das Gelb)
+   *     3. Canvas-Opacity via CSS kontrolliert die Sichtbarkeit
+   *
+   * → Das ist die einfachste und robusteste Lösung ohne Compositing-Fallstricke.
+   *   Sonnige Flächen = warm gelb-orange
+   *   Schattige Flächen = kühles Dunkelblau
+   *   Karte selbst bleibt immer sichtbar (Canvas-Opacity ~0.45)
+   */
+  _drawSunshine(map, shadows, sunPos) {
     if (!this._ctx) return;
     this._resize();
-    this._ctx.clearRect(0, 0, this._canvas.width, this._canvas.height);
 
-    if (!sunPos || sunPos.altitude <= 0.017) return;
+    const ctx = this._ctx;
+    const W   = this._canvas.width;
+    const H   = this._canvas.height;
+
+    ctx.clearRect(0, 0, W, H);
+
+    // ── Nacht / Sonne unter Horizont ──────────────────────────────────
+    if (!sunPos || sunPos.altitude <= 0.017) {
+      // Nacht: alles dunkel blau, kein Sonnenschein
+      ctx.fillStyle = 'rgba(10, 20, 45, 0.70)';
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
+
+    // ── Sonnenhöhe für Farbintensität ─────────────────────────────────
+    // 0° = Horizont (schwach), 90° = Zenit (voll)
+    const altDeg   = sunPos.altitude * 180 / Math.PI;
+    const strength = Math.min(1, altDeg / 45); // volle Intensität ab 45°
+
+    // Sonnenfarbe: tief-orange bei Horizont, warm-gelb bei hoch
+    const sunR = Math.round(255);
+    const sunG = Math.round(180 + strength * 60);   // 180→240
+    const sunB = Math.round(30  + strength * 20);    // 30→50
+    const sunA = (0.28 + strength * 0.17).toFixed(2); // 0.28→0.45
+
+    // Schattenfarbe
+    const shadA = (0.42 + strength * 0.13).toFixed(2); // 0.42→0.55
+
+    // ── Pass 1: Gesamte Fläche mit Sonnenschein füllen ────────────────
+    // Radial-Gradient: Mitte der Karte = heller, Ränder = etwas dunkler
+    const cx = W / 2, cy = H / 2;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.7);
+    grad.addColorStop(0,   `rgba(${sunR}, ${sunG}, ${sunB}, ${sunA})`);
+    grad.addColorStop(1,   `rgba(${sunR}, ${Math.max(160, sunG - 40)}, ${sunB}, ${parseFloat(sunA) * 0.7})`);
+
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // ── Pass 2: Schattenpolygone dunkel darüber zeichnen ─────────────
     if (!shadows?.features?.length) return;
 
-    // ALLE Schatten in einem einzigen Path → fill('nonzero') → kein Stacking
-    this._ctx.fillStyle = 'rgb(25, 40, 65)';
-    this._ctx.beginPath();
+    // Alle Schattenpolygone in einem einzigen Path → fill('nonzero')
+    // → kein Opacity-Stacking bei überlappenden Gebäuden
+    ctx.fillStyle = `rgba(15, 25, 50, ${shadA})`;
+    ctx.beginPath();
 
     for (const f of shadows.features) {
       const rings = f.geometry.type === 'Polygon'
@@ -263,35 +369,61 @@ const Shadow = {
       for (const ring of rings) {
         if (!ring || ring.length < 3) continue;
         const p0 = map.project([ring[0][0], ring[0][1]]);
-        this._ctx.moveTo(p0.x, p0.y);
+        ctx.moveTo(p0.x, p0.y);
         for (let i = 1; i < ring.length; i++) {
           const p = map.project([ring[i][0], ring[i][1]]);
-          this._ctx.lineTo(p.x, p.y);
+          ctx.lineTo(p.x, p.y);
         }
-        this._ctx.closePath();
+        ctx.closePath();
       }
     }
 
-    // Einmaliges Füllen aller Subpaths (nonzero winding = keine Löcher)
-    this._ctx.fill('nonzero');
+    // Einmaliges Füllen aller Subpaths
+    ctx.fill('nonzero');
+
+    // ── Pass 3: Weiche Kante zwischen Sonne und Schatten ─────────────
+    // Optional: leichter Blur-Effekt am Canvas-Rand für sanftere Übergänge
+    // (wird via CSS filter: blur(1px) auf dem Canvas-Element gesteuert,
+    //  hier nicht nötig – der Übergang ist bereits durch den Gradient weich)
   },
 
-  /** Passt die MapLibre-Lichtquelle an den Sonnenstand an (3D-Gebäude). */
+  /**
+   * Passt die MapLibre-Lichtquelle an den Sonnenstand an (3D-Gebäude).
+   * Gibt sonnigem Licht eine warme, schattiger Zeit eine kühle Farbe.
+   */
   _updateSunLight(map, sunPos) {
     if (!sunPos || sunPos.altitude <= 0.017) {
-      try { map.setLight({ anchor: 'map', color: '#8090a8', intensity: 0.15, position: [1.15, 0, 80] }); } catch(_){}
+      try {
+        map.setLight({
+          anchor:    'map',
+          color:     '#8090a8',
+          intensity: 0.15,
+          position:  [1.15, 0, 80]
+        });
+      } catch(_) {}
       return;
     }
-    const altDeg   = sunPos.altitude * 180 / Math.PI;
-    const azDeg    = ((sunPos.azimuth * 180 / Math.PI) + 180 + 360) % 360;
-    const polar    = Math.max(5, 90 - altDeg);
-    const color    = altDeg < 12 ? '#ffbe6e' : '#fff9e6';
+
+    const altDeg  = sunPos.altitude * 180 / Math.PI;
+    const azDeg   = ((sunPos.azimuth * 180 / Math.PI) + 180 + 360) % 360;
+    const polar   = Math.max(5, 90 - altDeg);
+    const color   = altDeg < 12 ? '#ffbe6e' : '#fff9e6';
     const intensity = Math.min(0.75, 0.22 + (altDeg / 90) * 0.53);
-    try { map.setLight({ anchor: 'map', color, intensity, position: [1.15, azDeg, polar] }); } catch(_){}
+
+    try {
+      map.setLight({ anchor: 'map', color, intensity, position: [1.15, azDeg, polar] });
+    } catch(_) {}
   },
 
-  // ── Punkt-in-Schatten ─────────────────────────────────────────────────────
+  // ── Punkt-in-Schatten (für Popup & Status-Pill) ──────────────────────
 
+  /**
+   * Prüft ob ein geografischer Punkt im Schatten liegt.
+   * Verwendet die zuletzt berechneten Schattenpolygone.
+   * @param {number} lng
+   * @param {number} lat
+   * @returns {boolean}
+   */
   isInShadow(lng, lat) {
     if (!this._lastGeoJSON?.features) return false;
     for (const f of this._lastGeoJSON.features) {
@@ -301,12 +433,15 @@ const Shadow = {
     return false;
   },
 
+  /** Point-in-Polygon (Ray-Casting). */
   _pip([x, y], ring) {
     let inside = false;
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
       const [xi, yi] = ring[i], [xj, yj] = ring[j];
-      if (((yi > y) !== (yj > y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi)) inside = !inside;
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi))
+        inside = !inside;
     }
     return inside;
   }
+
 };
