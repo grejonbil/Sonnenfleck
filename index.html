@@ -66,9 +66,12 @@
   <!-- Kartencontainer -->
   <div id="map"></div>
 
+  <!-- Schatten-Canvas (über Karte, unter UI) -->
+  <canvas id="shadow-canvas" aria-hidden="true"></canvas>
+
   <!-- Suchleiste -->
   <div id="search-container" role="search">
-    <!-- Logo klein -->
+    <!-- Logo + Name -->
     <div class="header-logo" aria-label="SonnenCheck">
       <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <g stroke="#F5C518" stroke-width="6" stroke-linecap="round">
@@ -85,6 +88,7 @@
         <path d="M50,26 A24,24,0,0,0,50,74 Z" fill="#1A2A3A" opacity="0.7"/>
       </svg>
     </div>
+    <span class="header-name" aria-hidden="true">SonnenCheck</span>
     <input
       type="search"
       id="search-input"

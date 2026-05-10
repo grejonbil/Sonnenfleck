@@ -77,6 +77,12 @@ map.on('error', err => {
 map.on('load', async () => {
   state.mapReady = true;
 
+  // Schatten-Canvas initialisieren
+  Shadow.initCanvas(document.getElementById('shadow-canvas'));
+
+  // Während Karte bewegt wird: Canvas leeren (Schatten würden verrutschen)
+  map.on('movestart', () => Shadow.clearCanvas());
+
   // Splash ausblenden (Map ist bereit)
   setTimeout(hideSplash, 400);
 
@@ -86,14 +92,16 @@ map.on('load', async () => {
   // UI initialisieren
   initDatePicker();
   initSlider();
-  renderFavorites();
 
   // Wetter laden
   loadWeather();
 
-  // Auf Kartenbewegung reagieren
+  // Auf Kartenbewegung reagieren (inkl. Schatten-Neuberechnung)
   map.on('moveend', onMapMoved);
 });
+
+// Favoriten sofort anzeigen – nicht erst nach Kartenstart warten
+document.addEventListener('DOMContentLoaded', () => renderFavorites());
 
 // ── GPS-Standort ──────────────────────────────────────────────────────────
 
