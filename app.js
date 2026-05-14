@@ -168,29 +168,66 @@ async function updateView() {
 
 function updateStatusPill(date) {
   const pill = document.getElementById('sun-status');
-  const icon = document.getElementById('status-icon');
   const text = document.getElementById('status-text');
   const sunUp = Sun.isUp(date, state.lat, state.lng);
+  const inShad = !sunUp || Shadow.isInShadow(state.lng, state.lat);
 
-  if (!sunUp) {
-    pill.className = 'shaded';
-    icon.textContent = '🌙';
-    text.textContent = 'Sonne unter dem Horizont';
-    return;
+  pill.classList.toggle('shade', inShad);
+
+  if (text) {
+    if (!sunUp) {
+      text.textContent = 'Sonne unter dem Horizont';
+    } else if (inShad) {
+      text.textContent = 'Im Schatten';
+    } else {
+      const { sunset } = Sun.getDaylight(date, state.lat, state.lng);
+      const remainMin = Math.round((sunset - date) / 60000);
+      text.textContent = remainMin > 0
+        ? `In der Sonne · noch ${remainMin} Min`
+        : 'In der Sonne';
+    }
   }
-
-  const inShad = Shadow.isInShadow(state.lng, state.lat);
-  pill.className = inShad ? 'shaded' : 'sunny';
-  icon.textContent = inShad ? '🌑' : '☀️';
-  text.textContent = inShad ? 'Im Schatten' : 'In der Sonne';
 }
 
 // ── Sonnenzeiten ──────────────────────────────────────────────────────────
 
 function updateSunTimes(date) {
   const { sunrise, sunset } = Sun.getDaylight(date, state.lat, state.lng);
-  document.getElementById('sun-times').textContent =
-    `🌅 ${Sun.formatTime(sunrise)}  🌇 ${Sun.formatTime(sunset)}`;
+  const srStr = Sun.formatTime(sunrise);
+  const ssStr = Sun.formatTime(sunset);
+
+  const srEl  = document.getElementById('sunrise-time');
+  const ssEl  = document.getElementById('sunset-time');
+  const durEl = document.getElementById('sun-duration');
+  const srLbl = document.getElementById('arc-sr-lbl');
+  const ssLbl = document.getElementById('arc-ss-lbl');
+
+  if (srEl) srEl.textContent = srStr;
+  if (ssEl) ssEl.textContent = ssStr;
+  if (srLbl) srLbl.textContent = srStr;
+  if (ssLbl) ssLbl.textContent = ssStr;
+
+  // Update notch positions on the arc
+  if (typeof window.updateArcNotches === 'function') {
+    window.updateArcNotches(
+      sunrise.getHours() * 60 + sunrise.getMinutes(),
+      sunset.getHours()  * 60 + sunset.getMinutes()
+    );
+  }
+
+  // Remaining daylight
+  if (durEl) {
+    const remainMs = sunset - date;
+    if (remainMs > 0 && Sun.isUp(date, state.lat, state.lng)) {
+      const h = Math.floor(remainMs / 3600000);
+      const m = Math.round((remainMs % 3600000) / 60000);
+      durEl.textContent = h > 0
+        ? `noch ${h}h ${m > 0 ? m + ' Min' : ''} Sonne`.trim()
+        : `noch ${m} Min Sonne`;
+    } else {
+      durEl.textContent = '';
+    }
+  }
 }
 
 // ── Zeitschieberegler ─────────────────────────────────────────────────────
@@ -231,6 +268,8 @@ document.getElementById('btn-now').addEventListener('click', () => {
   document.getElementById('time-slider').value = state.minutes;
   document.getElementById('time-label').textContent = fmt(state.minutes);
   document.getElementById('date-picker').value = now.toISOString().slice(0, 10);
+  const btnTime = document.getElementById('btn-now-time');
+  if (btnTime) btnTime.textContent = fmt(state.minutes);
   updateView();
 });
 

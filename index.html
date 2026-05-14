@@ -1,11 +1,11 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#FFB627">
-  <meta name="description" content="SonnenFleck — Wo scheint die Sonne gerade? Interaktive Karte für die Schweiz.">
-  <title>SonnenFleck — Redesign</title>
+  <meta name="description" content="SonnenFleck – Wo scheint die Sonne gerade? Interaktive Karte für die Schweiz.">
+  <title>SonnenFleck ☀️</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon.svg">
 
@@ -13,47 +13,706 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=DM+Sans:ital,opsz,wght@0,9..40,400..800;1,9..40,400..600&display=swap" rel="stylesheet">
 
+  <link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet">
   <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="app.css">
 
   <style>
-    html, body { background: #E8DDC4; height: 100%; }
-    body { margin: 0; overflow: hidden; }
-    #root { width: 100%; height: 100%; }
-    .stage {
-      width: 100vw; height: 100vh;
-      display: flex; align-items: center; justify-content: center;
-      background: #E8DDC4;
+    /* ── Full-screen overrides (no phone frame) ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%; overflow: hidden;
+      background: var(--paper-deep);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Map + shadow canvas fill the viewport */
+    #map {
+      position: fixed; inset: 0;
+      background: var(--paper);
+    }
+    #shadow-canvas {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0.55;
+    }
+
+    /* Sky tint + tod warm above shadow canvas */
+    .sky-tint, .tod-warm {
+      position: fixed; inset: 0;
+      z-index: 2;
+    }
+
+    /* Splash is fullscreen fixed */
+    #splash {
+      position: fixed; inset: 0;
+      z-index: 600;
+    }
+    #splash.fade-out { animation: splashOut .9s cubic-bezier(.7,0,.3,1) forwards; }
+    #splash.hidden   { display: none; }
+
+    /* Topbar: no Dynamic Island offset on desktop */
+    .topbar {
+      position: fixed !important;
+      top: 14px !important;
+    }
+
+    /* Impressum FAB position for real app */
+    .impressum-fab {
+      position: fixed !important;
+      top: 130px !important;
+    }
+
+    /* GPS button: fixed, above collapsed sheet */
+    .gps-btn {
+      position: fixed !important;
+      bottom: 252px !important;
+    }
+
+    /* Sheet: fixed to viewport bottom */
+    .sheet {
+      position: fixed !important;
+    }
+
+    /* Map popup inside MapLibre: use our design tokens */
+    .maplibregl-popup-content {
+      background: var(--surface-strong) !important;
+      backdrop-filter: blur(20px) saturate(140%);
+      border: 1px solid var(--border) !important;
+      border-radius: var(--r-lg) !important;
+      box-shadow: var(--shadow-lg) !important;
+      padding: 10px 14px !important;
+      font-family: var(--font-text);
+      color: var(--ink);
+    }
+    .maplibregl-popup-tip { display: none !important; }
+
+    /* Search results dropdown */
+    #search-results {
+      position: fixed;
+      top: 136px; left: 14px; right: 14px;
+      background: var(--surface-strong);
+      backdrop-filter: blur(20px) saturate(140%);
+      -webkit-backdrop-filter: blur(20px) saturate(140%);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-lg);
+      z-index: 20;
+      display: none;
       overflow: hidden;
     }
-    /* JS sets --s on .device-fit; default to 1 */
-    .device-fit {
-      --s: 1;
-      width: calc(402px * var(--s));
-      height: calc(874px * var(--s));
-      position: relative;
+    .search-item {
+      padding: 12px 16px;
+      cursor: pointer;
+      font-size: 14px; font-weight: 500;
+      color: var(--ink);
+      border-bottom: 1px solid var(--border);
+      transition: background .15s;
     }
-    .device-fit > * {
-      transform: scale(var(--s));
-      transform-origin: top left;
+    .search-item:last-child { border-bottom: 0; }
+    .search-item:hover { background: rgba(255, 200, 100, .12); }
+
+    /* Hidden time label (app.js writes to it; MutationObserver syncs display) */
+    #time-label { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; overflow: hidden; }
+
+    /* Range input overlay over the SVG arc */
+    .arc-slider-input {
       position: absolute;
-      top: 0; left: 0;
+      inset: 0; width: 100%; height: 100%;
+      opacity: 0; cursor: pointer;
+      z-index: 5;
     }
-    .app { width: 100%; height: 100%; }
+    .sun-arc-wrap { position: relative; }
+
+    /* Speed buttons */
+    #speed-buttons { display: flex; gap: 2px; }
+    #speed-buttons button {
+      padding: 6px 10px;
+      border-radius: var(--r-full);
+      font-weight: 700; font-size: 12px;
+      color: var(--ink-soft);
+      font-variant-numeric: tabular-nums;
+    }
+    #speed-buttons button.active {
+      background: var(--ink); color: var(--cream-50);
+    }
+
+    /* Favorites list chips */
+    #favorites-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .fav-chip-item {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 10px 8px 10px;
+      background: var(--surface-strong);
+      border: 1px solid var(--border);
+      border-radius: var(--r-full);
+      font-weight: 600; font-size: 13px;
+      color: var(--ink);
+      box-shadow: var(--shadow-sm);
+    }
+    .fav-del {
+      width: 20px; height: 20px;
+      border-radius: 50%; display: grid; place-items: center;
+      font-size: 12px; color: var(--muted);
+      background: rgba(45, 26, 14, .07);
+    }
+    .no-favorites { font-size: 13px; color: var(--muted); padding: 8px 0; }
+    .fav-actions { margin-top: 10px; }
+
+    /* Tab hidden */
+    .tab-hidden { display: none !important; }
+
+    /* Impressum modal: fixed fullscreen */
+    #impressum-overlay {
+      position: fixed !important;
+      inset: 0 !important;
+      z-index: 400 !important;
+    }
+    #impressum-panel.impressum {
+      position: fixed !important;
+      left: 0 !important; right: 0 !important; bottom: 0 !important;
+      z-index: 401 !important;
+      max-height: 82vh !important;
+    }
+
+    /* btn-now time label */
+    #btn-now-time { font-variant-numeric: tabular-nums; }
+
+    /* Play button text emoji fallback */
+    .playbar .play { font-size: 14px; }
+
+    /* Popup content classes */
+    .popup-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .popup-icon { font-size: 18px; }
+    .popup-title { font-family: var(--font-display); font-weight: 700; font-size: 15px; }
+    .popup-title.sunny { color: var(--sun-deep); }
+    .popup-title.shaded { color: var(--shade-core); }
+    .popup-detail { font-size: 12px; color: var(--ink-soft); }
+    .popup-next { font-size: 12px; color: var(--ink-soft); margin-top: 4px; }
+
+    /* MapLibre nav controls: re-skin */
+    .maplibregl-ctrl-group {
+      background: var(--surface-strong) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: var(--r-md) !important;
+      box-shadow: var(--shadow-md) !important;
+    }
+    .maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon,
+    .maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon {
+      filter: invert(15%) sepia(30%) saturate(500%) hue-rotate(10deg);
+    }
   </style>
 </head>
 <body>
-  <div id="root"></div>
 
-  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <!-- ── Splash ── -->
+  <div id="splash" class="splash">
+    <div class="splash-mark">
+      <span class="glyph"></span>
+      <span>Sonnenfleck</span>
+    </div>
 
-  <script type="text/babel" src="ios-frame.jsx"></script>
-  <script type="text/babel" src="tweaks-panel.jsx"></script>
-  <script type="text/babel" src="map.jsx"></script>
-  <script type="text/babel" src="components.jsx"></script>
-  <script type="text/babel" src="sheet.jsx"></script>
-  <script type="text/babel" src="app.jsx"></script>
+    <div class="splash-hero">
+      <h1 class="splash-title">
+        Folge dem<br><em>Sonnenfleck.</em>
+      </h1>
+      <p class="splash-tagline">
+        Sieh in Echtzeit, wo in der Schweiz gerade die Sonne scheint — und wie lange noch.
+      </p>
+    </div>
+
+    <div class="splash-footer">
+      <button type="button" id="btn-splash-skip" class="splash-cta" aria-label="App starten">
+        <span>Karte öffnen</span>
+        <span class="arrow" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14">
+            <path d="M 3 7 L 11 7 M 7 3 L 11 7 L 7 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+      </button>
+      <div class="splash-meta">
+        Daten · swisstopo<br>Wetter · MeteoSchweiz
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Map ── -->
+  <div id="map"></div>
+  <canvas id="shadow-canvas" aria-hidden="true"></canvas>
+  <div class="sky-tint" aria-hidden="true"></div>
+  <div class="tod-warm"  aria-hidden="true"></div>
+
+  <!-- ── Top bar: search + status ── -->
+  <div class="topbar">
+    <div class="search-card" role="search">
+      <span class="search-logo" aria-hidden="true"></span>
+      <input
+        type="search"
+        id="search-input"
+        class="search-input"
+        placeholder="Ort, Berg, Beizli suchen…"
+        autocomplete="off"
+        autocorrect="off"
+        spellcheck="false"
+        aria-label="Ort suchen"
+      >
+    </div>
+    <div id="sun-status" class="status-pill" role="status" aria-live="polite">
+      <span class="icon" aria-hidden="true"></span>
+      <span id="status-text">Karte erkunden</span>
+    </div>
+  </div>
+  <div id="search-results" role="listbox" aria-label="Suchergebnisse"></div>
+
+  <!-- Hidden legacy element (app.js writes weather icon emoji here) -->
+  <span id="weather-icon" hidden aria-hidden="true"></span>
+
+  <!-- ── Impressum FAB ── -->
+  <button type="button" id="btn-impressum" class="impressum-fab" aria-label="Impressum">i</button>
+
+  <!-- ── GPS button ── -->
+  <button type="button" id="btn-locate" class="gps-btn" aria-label="Meinen Standort">
+    <span class="crosshair" aria-hidden="true"></span>
+  </button>
+
+  <!-- ── Bottom sheet ── -->
+  <div id="bottom-sheet" class="sheet collapsed" role="complementary" aria-label="Steuerung">
+    <div class="sheet-grab" id="sheet-handle" role="button" aria-label="Sheet öffnen oder schliessen"></div>
+
+    <!-- Hero: place + weather -->
+    <div class="sheet-hero">
+      <div class="sheet-place">
+        <div class="place-row">
+          <span class="pin" aria-hidden="true"></span>
+          <span>Aktuelle Position</span>
+        </div>
+        <div id="location-name" class="place-name">Zürich</div>
+      </div>
+      <div id="weather-widget" class="weather-chip" aria-label="Wetter">
+        <span class="wicon" aria-hidden="true"></span>
+        <span id="weather-text">—</span>
+      </div>
+    </div>
+
+    <!-- Hero time display -->
+    <div class="sheet-time" aria-live="polite" aria-label="Aktuelle Uhrzeit">
+      <span id="td-hours">12</span>
+      <span class="colon" aria-hidden="true"><span></span><span></span></span>
+      <span id="td-mins">00</span>
+    </div>
+    <!-- Hidden time-label: app.js writes here, MutationObserver syncs the display -->
+    <label for="time-slider" id="time-label">12:00</label>
+
+    <!-- Sun times -->
+    <div id="sun-times" class="suntimes" aria-label="Sonnenauf- und -untergang">
+      <div class="st">
+        <span class="glyph" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14">
+            <circle cx="7" cy="9" r="3" fill="currentColor"/>
+            <line x1="0" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M 7 5 L 7 3 M 4 6 L 3 5 M 10 6 L 11 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/>
+          </svg>
+        </span>
+        <span id="sunrise-time">—</span>
+      </div>
+      <span class="sep" aria-hidden="true"></span>
+      <div class="st"><span id="sun-duration">—</span></div>
+      <span class="sep" aria-hidden="true"></span>
+      <div class="st">
+        <span class="glyph" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14">
+            <circle cx="7" cy="9" r="3" fill="currentColor" opacity=".5"/>
+            <line x1="0" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M 7 9 L 7 11 M 4 9 L 3 10 M 10 9 L 11 10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/>
+          </svg>
+        </span>
+        <span id="sunset-time">—</span>
+      </div>
+    </div>
+
+    <!-- Sun arc + invisible range input overlay -->
+    <div class="sun-arc-wrap">
+      <svg id="sun-arc-svg" class="sun-arc" viewBox="0 0 340 56" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="arcGrad" x1="0" x2="1">
+            <stop offset="0%"   stop-color="#FFB16B"/>
+            <stop offset="50%"  stop-color="#FFC230"/>
+            <stop offset="100%" stop-color="#F25B36"/>
+          </linearGradient>
+          <radialGradient id="sunBead" cx="50%" cy="50%" r="50%">
+            <stop offset="0%"   stop-color="#FFF1B0"/>
+            <stop offset="60%"  stop-color="#FFC230"/>
+            <stop offset="100%" stop-color="#E07A14"/>
+          </radialGradient>
+          <filter id="sunBlur"><feGaussianBlur stdDeviation="6"/></filter>
+        </defs>
+        <!-- horizon line -->
+        <line x1="0" y1="55" x2="340" y2="55" stroke="rgba(45,26,14,.12)" stroke-width="1" stroke-dasharray="2 4"/>
+        <!-- full arc (faint) -->
+        <path id="arc-full" d="M 0 55.55 A 340 340 0 0 1 340 55.55" fill="none" stroke="rgba(45,26,14,.15)" stroke-width="3" stroke-linecap="round"/>
+        <!-- filled portion -->
+        <path id="arc-filled" d="" fill="none" stroke="url(#arcGrad)" stroke-width="3.5" stroke-linecap="round"/>
+        <!-- sunrise notch -->
+        <circle id="arc-sr-dot" cx="14" cy="53" r="3.2" fill="#FBF3E1" stroke="#C8A98B" stroke-width="1.3"/>
+        <text id="arc-sr-lbl" x="22" y="49" font-family="DM Sans,sans-serif" font-size="9" font-weight="700" fill="#9D8262" letter-spacing=".05em">—</text>
+        <!-- sunset notch -->
+        <circle id="arc-ss-dot" cx="326" cy="53" r="3.2" fill="#FBF3E1" stroke="#C8A98B" stroke-width="1.3"/>
+        <text id="arc-ss-lbl" x="318" y="49" text-anchor="end" font-family="DM Sans,sans-serif" font-size="9" font-weight="700" fill="#9D8262" letter-spacing=".05em">—</text>
+        <!-- sun bead group -->
+        <g id="arc-bead">
+          <circle id="arc-bead-glow" cx="170" cy="10" r="14" fill="url(#sunBead)" opacity=".4" filter="url(#sunBlur)"/>
+          <circle id="arc-bead-main" cx="170" cy="10" r="9"  fill="url(#sunBead)" style="filter:drop-shadow(0 0 8px rgba(255,200,80,.85))"/>
+          <circle id="arc-bead-core" cx="170" cy="10" r="3.2" fill="#FFF6CC"/>
+        </g>
+      </svg>
+      <input type="range" id="time-slider" class="arc-slider-input"
+             min="360" max="1320" step="15" value="720"
+             aria-label="Uhrzeit auswählen">
+      <div class="sun-arc-labels" aria-hidden="true">
+        <span>06</span><span>10</span><span>14</span><span>18</span><span>22</span>
+      </div>
+    </div>
+
+    <!-- Playbar -->
+    <div class="playbar">
+      <label class="date" for="date-picker">
+        <span class="cal" aria-hidden="true"></span>
+        <span id="date-display">Heute</span>
+        <input type="date" id="date-picker"
+               style="position:absolute;opacity:0;inset:0;cursor:pointer;width:100%;height:100%"
+               aria-label="Datum auswählen">
+      </label>
+      <button type="button" id="btn-play" class="play" aria-label="Zeitraffer starten">▶</button>
+      <div class="speed" id="speed-buttons" role="group" aria-label="Geschwindigkeit">
+        <button class="active" data-spd="1">1×</button>
+        <button data-spd="2">2×</button>
+        <button data-spd="4">4×</button>
+        <button data-spd="8">8×</button>
+        <!-- hidden select that app.js reads -->
+        <select id="anim-speed" style="display:none" aria-hidden="true">
+          <option value="1">1×</option>
+          <option value="2" selected>2×</option>
+          <option value="4">4×</option>
+          <option value="8">8×</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Jump to now -->
+    <button type="button" id="btn-now" class="now-btn" aria-label="Aktuelle Uhrzeit">
+      <span class="dot" aria-hidden="true"></span>
+      Sprung zu jetzt · <span id="btn-now-time">--:--</span>
+    </button>
+
+    <!-- Tabs -->
+    <div class="sheet-tabs" role="tablist">
+      <button id="tab-favs"    role="tab" aria-selected="true"  class="active">★ Favoriten</button>
+      <button id="tab-weather" role="tab" aria-selected="false">⛅ Wetter heute</button>
+    </div>
+
+    <!-- Favorites panel -->
+    <div id="favorites-section" role="tabpanel" aria-label="Favoriten">
+      <div id="favorites-list" role="list"></div>
+      <div class="fav-actions">
+        <button type="button" id="btn-fav-save" class="fav-chip add" aria-label="Favorit speichern">
+          ☆ Favorit speichern
+        </button>
+      </div>
+    </div>
+
+    <!-- Weather panel -->
+    <div id="weather-panel" class="weather-detail tab-hidden" role="tabpanel" aria-label="Wetter heute">
+      <div><div class="wk">Temperatur</div><div class="wv" id="wp-temp">—</div></div>
+      <div><div class="wk">Gefühlt</div><div class="wv">—</div></div>
+      <div><div class="wk">UV-Index</div><div class="wv">—</div></div>
+      <div><div class="wk">Bewölkung</div><div class="wv" id="wp-clouds">—</div></div>
+    </div>
+  </div>
+
+  <!-- ── Impressum modal ── -->
+  <div id="impressum-overlay" hidden class="modal-scrim">
+    <div id="impressum-panel" class="impressum" role="dialog" aria-modal="true" aria-label="Impressum">
+      <div class="sheet-grab" aria-hidden="true"></div>
+      <h2>Über SonnenFleck</h2>
+      <p>
+        Ein Wochenend-Projekt aus Zürich. SonnenFleck zeigt dir auf der Karte,
+        wo in den nächsten Minuten die Sonne scheint — basierend auf echten
+        Gebäudedaten und astronomischer Sonnenberechnung.
+      </p>
+
+      <p style="font-weight:700; color:var(--ink); margin-top:18px">Betreiber</p>
+      <p>
+        Gregory Biland · Dienerstrasse 32 · 8004 Zürich<br>
+        <a href="https://github.com/grbiuzh" target="_blank" rel="noopener" style="color:var(--sun-deep)">github.com/grbiuzh</a>
+      </p>
+
+      <p style="font-weight:700; color:var(--ink); margin-top:18px">Datenquellen</p>
+      <div class="src-grid">
+        <div class="src"><div class="badge">3D</div><div><div class="label">swissBUILDINGS3D 3.0</div><div class="desc">Bundesamt für Landestopografie · swisstopo</div></div></div>
+        <div class="src"><div class="badge">☼</div><div><div class="label">SunCalc Algorithmen</div><div class="desc">Astronomische Sonnenposition · V. Agafonkin</div></div></div>
+        <div class="src"><div class="badge">⛅</div><div><div class="label">Open-Meteo / MeteoSchweiz</div><div class="desc">Live-Temperatur und Bewölkung</div></div></div>
+        <div class="src"><div class="badge">🗺</div><div><div class="label">OpenFreeMap / swisstopo</div><div class="desc">Vektorkacheln · CC BY 4.0</div></div></div>
+      </div>
+
+      <p style="margin-top:18px; font-size:12px; color:var(--ink-soft)">
+        Keine personenbezogenen Daten werden gespeichert. Favoriten liegen lokal im Browser.
+      </p>
+      <p style="margin-top:8px; font-size:12px; color:var(--ink-soft)">
+        © 2026 SonnenFleck · hallo@sonnenfleck.ch
+      </p>
+      <button
+        type="button"
+        id="btn-impressum-close"
+        style="width:100%;margin-top:16px;padding:14px;background:var(--ink);color:var(--cream-50);border-radius:var(--r-md);font-weight:700;font-family:var(--font-display);font-size:14px;letter-spacing:.03em;text-transform:uppercase"
+      >Schliessen</button>
+    </div>
+  </div>
+
+  <!-- ── Scripts ── -->
+  <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
+  <script src="sun.js"></script>
+  <script src="shadow.js"></script>
+  <script src="weather.js"></script>
+  <script src="favorites.js"></script>
+  <script src="app.js"></script>
+
+  <script>
+  (function () {
+    'use strict';
+
+    // ── Arc geometry (flat arc: r=340, H=56, W=340) ─────────────────────────
+    var MIN_H = 6, MAX_H = 22;
+    var W = 340, H = 56, r = 340, cxA = 170, cyA = 350;
+    var halfAngle = Math.asin(170 / 340); // = π/6
+
+    function ptAt(t) {
+      var a = -Math.PI / 2 - halfAngle + t * 2 * halfAngle;
+      return { x: cxA + r * Math.cos(a), y: cyA + r * Math.sin(a) };
+    }
+
+    var leftPt  = ptAt(0);
+    var rightPt = ptAt(1);
+    var LX = leftPt.x.toFixed(2),  LY = leftPt.y.toFixed(2);
+    var RX = rightPt.x.toFixed(2), RY = rightPt.y.toFixed(2);
+
+    // Update the arc-full path with correct endpoints
+    var arcFull = document.getElementById('arc-full');
+    if (arcFull) arcFull.setAttribute('d', 'M ' + LX + ' ' + LY + ' A ' + r + ' ' + r + ' 0 0 1 ' + RX + ' ' + RY);
+
+    function updateArc(minutes) {
+      var hour = minutes / 60;
+      var t = Math.max(0, Math.min(1, (hour - MIN_H) / (MAX_H - MIN_H)));
+      var sun = ptAt(t);
+      var sx = +sun.x.toFixed(2), sy = +sun.y.toFixed(2);
+
+      var filled = document.getElementById('arc-filled');
+      if (filled) {
+        filled.setAttribute('d', t <= 0 ? '' : 'M ' + LX + ' ' + LY + ' A ' + r + ' ' + r + ' 0 0 1 ' + sx + ' ' + sy);
+      }
+
+      var bead = document.getElementById('arc-bead');
+      var aboveHorizon = hour > 6.3 && hour < 20.8;
+      if (bead) {
+        bead.style.display = aboveHorizon ? '' : 'none';
+        ['arc-bead-glow', 'arc-bead-main', 'arc-bead-core'].forEach(function (id) {
+          var c = document.getElementById(id);
+          if (c) { c.setAttribute('cx', sx); c.setAttribute('cy', sy); }
+        });
+      }
+    }
+
+    // Update sunrise/sunset notch positions and labels
+    window.updateArcNotches = function (srMins, ssMins) {
+      function notchPt(mins) {
+        var t = Math.max(0, Math.min(1, (mins / 60 - MIN_H) / (MAX_H - MIN_H)));
+        return ptAt(t);
+      }
+      var srP = notchPt(srMins), ssP = notchPt(ssMins);
+      var srx = +srP.x.toFixed(2), sry = +srP.y.toFixed(2);
+      var ssx = +ssP.x.toFixed(2), ssy = +ssP.y.toFixed(2);
+
+      var srDot = document.getElementById('arc-sr-dot');
+      var ssDot = document.getElementById('arc-ss-dot');
+      var srLbl = document.getElementById('arc-sr-lbl');
+      var ssLbl = document.getElementById('arc-ss-lbl');
+
+      if (srDot) { srDot.setAttribute('cx', srx); srDot.setAttribute('cy', sry); }
+      if (ssDot) { ssDot.setAttribute('cx', ssx); ssDot.setAttribute('cy', ssy); }
+      if (srLbl) { srLbl.setAttribute('x', +srx + 8); srLbl.setAttribute('y', +sry - 4); }
+      if (ssLbl) { ssLbl.setAttribute('x', ssP.x < 280 ? ssx - 8 : ssx - 8); ssLbl.setAttribute('y', +ssy - 4); ssLbl.setAttribute('text-anchor', ssP.x > 200 ? 'end' : 'start'); }
+    };
+
+    // ── Time display ─────────────────────────────────────────────────────────
+    function updateTimeDisplay(minutes) {
+      var h = Math.floor(minutes / 60).toString().padStart(2, '0');
+      var m = (minutes % 60).toString().padStart(2, '0');
+      var hdEl = document.getElementById('td-hours');
+      var mdEl = document.getElementById('td-mins');
+      if (hdEl) hdEl.textContent = h;
+      if (mdEl) mdEl.textContent = m;
+    }
+
+    // ── Time-of-day palette ──────────────────────────────────────────────────
+    function todForHour(h) {
+      if (h < 6.5)  return 'night';
+      if (h < 8)    return 'dawn';
+      if (h < 11.5) return 'morning';
+      if (h < 15)   return 'noon';
+      if (h < 18.5) return 'golden';
+      if (h < 21)   return 'dusk';
+      return 'night';
+    }
+    function updateTod(minutes) {
+      document.documentElement.dataset.tod = todForHour(minutes / 60);
+    }
+
+    // ── Date display ─────────────────────────────────────────────────────────
+    function updateDateDisplay(dateStr) {
+      var el = document.getElementById('date-display');
+      if (!el || !dateStr) return;
+      var d = new Date(dateStr + 'T12:00:00');
+      var today = new Date().toISOString().slice(0, 10);
+      var wday = d.toLocaleDateString('de-CH', { weekday: 'short' });
+      var day = d.getDate();
+      var mon = d.toLocaleDateString('de-CH', { month: 'short' });
+      el.textContent = (dateStr === today ? 'Heute · ' : '') + wday + ' ' + day + '. ' + mon;
+    }
+
+    // ── "Sprung zu jetzt" button: show current real time ─────────────────────
+    (function () {
+      var now = new Date();
+      var el = document.getElementById('btn-now-time');
+      if (el) el.textContent = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    })();
+
+    // ── Sync all displays from minutes value ─────────────────────────────────
+    function syncAll(minutes) {
+      updateArc(minutes);
+      updateTimeDisplay(minutes);
+      updateTod(minutes);
+    }
+
+    // ── MutationObserver: watch #time-label (app.js writes here) ─────────────
+    var timeLabel = document.getElementById('time-label');
+    if (timeLabel) {
+      new MutationObserver(function () {
+        var text = (timeLabel.textContent || '').trim();
+        var parts = text.split(':');
+        if (parts.length === 2) {
+          var mins = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+          if (!isNaN(mins)) syncAll(mins);
+        }
+      }).observe(timeLabel, { childList: true, characterData: true, subtree: true });
+      // Initial sync from whatever app.js set
+      setTimeout(function () {
+        var text = (timeLabel.textContent || '').trim();
+        var parts = text.split(':');
+        if (parts.length === 2) {
+          var mins = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+          if (!isNaN(mins)) syncAll(mins);
+        }
+      }, 100);
+    }
+
+    // Also sync on slider input (before app.js fires its own handler)
+    var slider = document.getElementById('time-slider');
+    if (slider) {
+      slider.addEventListener('input', function () {
+        syncAll(parseInt(slider.value, 10) || 720);
+      });
+    }
+
+    // ── Date picker ──────────────────────────────────────────────────────────
+    var datePicker = document.getElementById('date-picker');
+    if (datePicker) {
+      datePicker.addEventListener('change', function () {
+        updateDateDisplay(datePicker.value);
+      });
+      // Initialize with today
+      setTimeout(function () {
+        var dp = document.getElementById('date-picker');
+        if (dp && dp.value) updateDateDisplay(dp.value);
+        else updateDateDisplay(new Date().toISOString().slice(0, 10));
+      }, 600);
+    }
+
+    // Initial arc + time sync (retried until app.js sets slider value)
+    syncAll(720); // 12:00 default
+    [500, 1000, 2000].forEach(function (ms) {
+      setTimeout(function () {
+        var sl = document.getElementById('time-slider');
+        if (sl) syncAll(parseInt(sl.value, 10) || 720);
+      }, ms);
+    });
+
+    // ── Speed buttons: sync with hidden <select id="anim-speed"> ─────────────
+    var speedBtns = document.querySelectorAll('#speed-buttons button[data-spd]');
+    var animSpeed = document.getElementById('anim-speed');
+    speedBtns.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var spd = btn.dataset.spd;
+        speedBtns.forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        if (animSpeed) animSpeed.value = spd;
+      });
+    });
+
+    // ── Sheet expand / collapse ──────────────────────────────────────────────
+    var sheet  = document.getElementById('bottom-sheet');
+    var handle = document.getElementById('sheet-handle');
+    if (sheet && handle) {
+      handle.addEventListener('click', function () {
+        if (sheet.classList.contains('tabs-open')) {
+          sheet.classList.remove('tabs-open');
+          sheet.classList.add('collapsed');
+        } else {
+          sheet.classList.remove('collapsed');
+          sheet.classList.add('tabs-open');
+        }
+      });
+    }
+
+    // ── Tab switching ────────────────────────────────────────────────────────
+    var tabFavs     = document.getElementById('tab-favs');
+    var tabWeather  = document.getElementById('tab-weather');
+    var favSection  = document.getElementById('favorites-section');
+    var wPanel      = document.getElementById('weather-panel');
+
+    function showFavs() {
+      if (!tabFavs) return;
+      tabFavs.classList.add('active');    tabFavs.setAttribute('aria-selected', 'true');
+      tabWeather.classList.remove('active'); tabWeather.setAttribute('aria-selected', 'false');
+      favSection.classList.remove('tab-hidden');
+      wPanel.classList.add('tab-hidden');
+      if (sheet) { sheet.classList.remove('collapsed'); sheet.classList.add('tabs-open'); }
+    }
+    function showWeather() {
+      if (!tabWeather) return;
+      tabWeather.classList.add('active');  tabWeather.setAttribute('aria-selected', 'true');
+      tabFavs.classList.remove('active');  tabFavs.setAttribute('aria-selected', 'false');
+      wPanel.classList.remove('tab-hidden');
+      favSection.classList.add('tab-hidden');
+      if (sheet) { sheet.classList.remove('collapsed'); sheet.classList.add('tabs-open'); }
+    }
+    if (tabFavs)    tabFavs.addEventListener('click', showFavs);
+    if (tabWeather) tabWeather.addEventListener('click', showWeather);
+
+    // ── btn-play: update icon via textContent ────────────────────────────────
+    // app.js sets textContent to '▶' or '⏸'; the .play styles center it fine.
+
+    // ── GPS button bottom: adjust when sheet expands ─────────────────────────
+    if (sheet && typeof MutationObserver !== 'undefined') {
+      new MutationObserver(function () {
+        var gpsbtn = document.getElementById('btn-locate');
+        if (!gpsbtn) return;
+        var expanded = sheet.classList.contains('tabs-open');
+        gpsbtn.style.bottom = expanded ? 'calc(78vh + 18px)' : '252px';
+      }).observe(sheet, { attributes: true, attributeFilter: ['class'] });
+    }
+
+  })();
+  </script>
 </body>
 </html>
