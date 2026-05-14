@@ -18,78 +18,44 @@
   <link rel="stylesheet" href="app.css">
 
   <style>
-    /* ── Full-screen overrides (no phone frame) ── */
+    /* ── Base ── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     html, body {
       height: 100%; overflow: hidden;
       background: var(--paper-deep);
       -webkit-tap-highlight-color: transparent;
     }
 
-    /* Map + shadow canvas fill the viewport */
-    #map {
-      position: fixed; inset: 0;
-      background: var(--paper);
-    }
+    /* ── Map + overlays ── */
+    #map { position: fixed; inset: 0; background: var(--paper); }
     #shadow-canvas {
       position: fixed; inset: 0;
-      pointer-events: none;
-      z-index: 1;
-      opacity: 0.55;
+      pointer-events: none; z-index: 1;
+      /* opacity controlled per-pixel by canvas drawing code */
     }
+    .sky-tint, .tod-warm { position: fixed; inset: 0; z-index: 2; }
 
-    /* Sky tint + tod warm above shadow canvas */
-    .sky-tint, .tod-warm {
-      position: fixed; inset: 0;
-      z-index: 2;
-    }
-
-    /* Splash is fullscreen fixed */
-    #splash {
-      position: fixed; inset: 0;
-      z-index: 600;
-    }
+    /* ── Splash ── */
+    #splash { position: fixed; inset: 0; z-index: 600; }
     #splash.fade-out { animation: splashOut .9s cubic-bezier(.7,0,.3,1) forwards; }
     #splash.hidden   { display: none; }
 
-    /* Topbar: no Dynamic Island offset on desktop */
+    /* ── Controls: mobile-first ── */
     .topbar {
       position: fixed !important;
       top: 14px !important;
+      left: 14px !important;
+      right: 14px !important;
     }
+    .impressum-fab { position: fixed !important; top: 130px !important; right: 14px !important; }
+    .gps-btn       { position: fixed !important; bottom: 258px !important; right: 16px !important; }
+    .sheet         { position: fixed !important; left: 0 !important; right: 0 !important; }
 
-    /* Impressum FAB position for real app */
-    .impressum-fab {
-      position: fixed !important;
-      top: 130px !important;
-    }
+    /* ── Critical fix: date label must be positioned so its hidden input
+       doesn't spill over the whole sheet ── */
+    .playbar .date { position: relative; overflow: hidden; }
 
-    /* GPS button: fixed, above collapsed sheet */
-    .gps-btn {
-      position: fixed !important;
-      bottom: 252px !important;
-    }
-
-    /* Sheet: fixed to viewport bottom */
-    .sheet {
-      position: fixed !important;
-    }
-
-    /* Map popup inside MapLibre: use our design tokens */
-    .maplibregl-popup-content {
-      background: var(--surface-strong) !important;
-      backdrop-filter: blur(20px) saturate(140%);
-      border: 1px solid var(--border) !important;
-      border-radius: var(--r-lg) !important;
-      box-shadow: var(--shadow-lg) !important;
-      padding: 10px 14px !important;
-      font-family: var(--font-text);
-      color: var(--ink);
-    }
-    .maplibregl-popup-tip { display: none !important; }
-
-    /* Search results dropdown */
+    /* ── Search results ── */
     #search-results {
       position: fixed;
       top: 136px; left: 14px; right: 14px;
@@ -99,108 +65,178 @@
       border: 1px solid var(--border);
       border-radius: var(--r-lg);
       box-shadow: var(--shadow-lg);
-      z-index: 20;
-      display: none;
-      overflow: hidden;
+      z-index: 20; display: none; overflow: hidden;
     }
     .search-item {
-      padding: 12px 16px;
-      cursor: pointer;
-      font-size: 14px; font-weight: 500;
-      color: var(--ink);
-      border-bottom: 1px solid var(--border);
-      transition: background .15s;
+      padding: 12px 16px; cursor: pointer;
+      font-size: 14px; font-weight: 500; color: var(--ink);
+      border-bottom: 1px solid var(--border); transition: background .15s;
     }
     .search-item:last-child { border-bottom: 0; }
     .search-item:hover { background: rgba(255, 200, 100, .12); }
 
-    /* Hidden time label (app.js writes to it; MutationObserver syncs display) */
-    #time-label { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; overflow: hidden; }
-
-    /* Range input overlay over the SVG arc */
-    .arc-slider-input {
-      position: absolute;
-      inset: 0; width: 100%; height: 100%;
-      opacity: 0; cursor: pointer;
-      z-index: 5;
+    /* ── Hidden time-label (MutationObserver target) ── */
+    #time-label {
+      position: absolute; opacity: 0; pointer-events: none;
+      width: 1px; height: 1px; overflow: hidden;
     }
-    .sun-arc-wrap { position: relative; }
 
-    /* Speed buttons */
+    /* ── Sun arc range input overlay ── */
+    .sun-arc-wrap { position: relative; }
+    .arc-slider-input {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      opacity: 0; cursor: pointer; z-index: 5;
+    }
+
+    /* ── Speed buttons ── */
     #speed-buttons { display: flex; gap: 2px; }
     #speed-buttons button {
-      padding: 6px 10px;
-      border-radius: var(--r-full);
-      font-weight: 700; font-size: 12px;
-      color: var(--ink-soft);
+      padding: 6px 10px; border-radius: var(--r-full);
+      font-weight: 700; font-size: 12px; color: var(--ink-soft);
       font-variant-numeric: tabular-nums;
     }
-    #speed-buttons button.active {
-      background: var(--ink); color: var(--cream-50);
-    }
+    #speed-buttons button.active { background: var(--ink); color: var(--cream-50); }
 
-    /* Favorites list chips */
+    /* ── Favorites ── */
     #favorites-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
     .fav-chip-item {
       display: inline-flex; align-items: center; gap: 6px;
-      padding: 8px 10px 8px 10px;
-      background: var(--surface-strong);
-      border: 1px solid var(--border);
-      border-radius: var(--r-full);
-      font-weight: 600; font-size: 13px;
-      color: var(--ink);
-      box-shadow: var(--shadow-sm);
+      padding: 8px 12px;
+      background: var(--surface-strong); border: 1px solid var(--border);
+      border-radius: var(--r-full); font-weight: 600; font-size: 13px;
+      color: var(--ink); box-shadow: var(--shadow-sm);
     }
     .fav-del {
-      width: 20px; height: 20px;
-      border-radius: 50%; display: grid; place-items: center;
-      font-size: 12px; color: var(--muted);
-      background: rgba(45, 26, 14, .07);
+      width: 20px; height: 20px; border-radius: 50%;
+      display: grid; place-items: center;
+      font-size: 12px; color: var(--muted); background: rgba(45,26,14,.07);
     }
     .no-favorites { font-size: 13px; color: var(--muted); padding: 8px 0; }
     .fav-actions { margin-top: 10px; }
-
-    /* Tab hidden */
     .tab-hidden { display: none !important; }
 
-    /* Impressum modal: fixed fullscreen */
-    #impressum-overlay {
-      position: fixed !important;
-      inset: 0 !important;
-      z-index: 400 !important;
-    }
+    /* ── Impressum modal ── */
+    #impressum-overlay { position: fixed !important; inset: 0 !important; z-index: 400 !important; }
     #impressum-panel.impressum {
       position: fixed !important;
       left: 0 !important; right: 0 !important; bottom: 0 !important;
-      z-index: 401 !important;
-      max-height: 82vh !important;
+      z-index: 401 !important; max-height: 82vh !important;
     }
 
-    /* btn-now time label */
+    /* ── Misc ── */
     #btn-now-time { font-variant-numeric: tabular-nums; }
-
-    /* Play button text emoji fallback */
     .playbar .play { font-size: 14px; }
-
-    /* Popup content classes */
     .popup-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
     .popup-icon { font-size: 18px; }
     .popup-title { font-family: var(--font-display); font-weight: 700; font-size: 15px; }
-    .popup-title.sunny { color: var(--sun-deep); }
+    .popup-title.sunny  { color: var(--sun-deep); }
     .popup-title.shaded { color: var(--shade-core); }
-    .popup-detail { font-size: 12px; color: var(--ink-soft); }
-    .popup-next { font-size: 12px; color: var(--ink-soft); margin-top: 4px; }
+    .popup-detail, .popup-next { font-size: 12px; color: var(--ink-soft); }
+    .popup-next { margin-top: 4px; }
 
-    /* MapLibre nav controls: re-skin */
+    /* ── MapLibre controls re-skin ── */
+    .maplibregl-popup-content {
+      background: var(--surface-strong) !important;
+      backdrop-filter: blur(20px) saturate(140%);
+      border: 1px solid var(--border) !important;
+      border-radius: var(--r-lg) !important;
+      box-shadow: var(--shadow-lg) !important;
+      padding: 10px 14px !important;
+      font-family: var(--font-text); color: var(--ink);
+    }
+    .maplibregl-popup-tip { display: none !important; }
     .maplibregl-ctrl-group {
       background: var(--surface-strong) !important;
       border: 1px solid var(--border) !important;
       border-radius: var(--r-md) !important;
       box-shadow: var(--shadow-md) !important;
     }
-    .maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon,
-    .maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon {
-      filter: invert(15%) sepia(30%) saturate(500%) hue-rotate(10deg);
+
+    /* ── Zoom hint ── */
+    #zoom-hint {
+      position: fixed; bottom: 268px; left: 50%; transform: translateX(-50%);
+      background: var(--surface-strong);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: var(--r-full);
+      padding: 8px 16px;
+      font-size: 12px; font-weight: 600; color: var(--ink-soft);
+      white-space: nowrap; z-index: 12;
+      pointer-events: none;
+      transition: opacity .3s;
+    }
+
+    /* ── GPS user location dot ── */
+    .user-location-dot {
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: #2979FF;
+      border: 3px solid #fff;
+      box-shadow: 0 2px 8px rgba(41,121,255,.5);
+    }
+    .user-location-pulse {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: rgba(41, 121, 255, 0.18);
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      animation: locPulse 2s ease-out infinite;
+    }
+    @keyframes locPulse {
+      0%   { transform: translate(-50%,-50%) scale(.4); opacity: .9 }
+      100% { transform: translate(-50%,-50%) scale(1);  opacity: 0  }
+    }
+
+    /* ── Desktop / tablet responsive layout (≥ 720px wide) ── */
+    @media (min-width: 720px) {
+      /* Controls panel constrained to left side */
+      .topbar {
+        right: auto !important;
+        width: 420px !important;
+      }
+      #search-results {
+        right: auto !important;
+        width: 420px !important;
+      }
+      .impressum-fab {
+        left: 434px !important;
+        right: auto !important;
+      }
+      .gps-btn {
+        right: auto !important;
+        left: 14px !important;
+        bottom: 14px !important;
+      }
+      /* Sheet becomes a left sidebar panel */
+      .sheet {
+        right: auto !important;
+        width: 420px !important;
+        border-radius: var(--r-xl) !important;
+        bottom: 14px !important;
+        left: 14px !important;
+        max-height: calc(100vh - 28px) !important;
+      }
+      /* On desktop always show slightly more (taller collapsed area) */
+      .sheet.collapsed {
+        transform: translateY(calc(100% - 240px)) !important;
+      }
+      /* Impressum panel also constrained */
+      #impressum-panel.impressum {
+        left: 14px !important;
+        right: auto !important;
+        width: 420px !important;
+        border-radius: var(--r-xl) !important;
+        bottom: 14px !important;
+        max-height: calc(100vh - 28px) !important;
+      }
+      /* Zoom hint left-aligned */
+      #zoom-hint {
+        left: 220px;
+        bottom: 14px;
+        transform: none;
+      }
     }
   </style>
 </head>
@@ -275,6 +311,9 @@
   <button type="button" id="btn-locate" class="gps-btn" aria-label="Meinen Standort">
     <span class="crosshair" aria-hidden="true"></span>
   </button>
+
+  <!-- ── Zoom hint (shown when zoom < 14) ── -->
+  <div id="zoom-hint" hidden aria-live="polite">Näher heranzoomen für Schattenberechnung</div>
 
   <!-- ── Bottom sheet ── -->
   <div id="bottom-sheet" class="sheet collapsed" role="complementary" aria-label="Steuerung">
@@ -376,11 +415,11 @@
 
     <!-- Playbar -->
     <div class="playbar">
-      <label class="date" for="date-picker">
+      <label class="date" for="date-picker" style="position:relative;overflow:hidden">
         <span class="cal" aria-hidden="true"></span>
         <span id="date-display">Heute</span>
         <input type="date" id="date-picker"
-               style="position:absolute;opacity:0;inset:0;cursor:pointer;width:100%;height:100%"
+               style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%"
                aria-label="Datum auswählen">
       </label>
       <button type="button" id="btn-play" class="play" aria-label="Zeitraffer starten">▶</button>

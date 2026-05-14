@@ -321,44 +321,34 @@ const Shadow = {
 
     ctx.clearRect(0, 0, W, H);
 
-    // ── Nacht / Sonne unter Horizont ──────────────────────────────────
-    if (!sunPos || sunPos.altitude <= 0.017) {
-      // Nacht: alles dunkel blau, kein Sonnenschein
-      ctx.fillStyle = 'rgba(10, 20, 45, 0.70)';
-      ctx.fillRect(0, 0, W, H);
-      return;
-    }
+    // Night: nothing (clean basemap)
+    if (!sunPos || sunPos.altitude <= 0.017) return;
 
-    // ── Sonnenhöhe für Farbintensität ─────────────────────────────────
-    // 0° = Horizont (schwach), 90° = Zenit (voll)
+    // Sun strength 0–1 based on altitude (full at 45°+)
     const altDeg   = sunPos.altitude * 180 / Math.PI;
-    const strength = Math.min(1, altDeg / 45); // volle Intensität ab 45°
+    const strength = Math.min(1, altDeg / 45);
 
-    // Sonnenfarbe: tief-orange bei Horizont, warm-gelb bei hoch
-    const sunR = Math.round(255);
-    const sunG = Math.round(180 + strength * 60);   // 180→240
-    const sunB = Math.round(30  + strength * 20);    // 30→50
-    const sunA = (0.28 + strength * 0.17).toFixed(2); // 0.28→0.45
+    // Warm sunshine colour: orange at horizon, yellow-gold at zenith
+    const sunR = 255;
+    const sunG = Math.round(185 + strength * 55);  // 185 → 240
+    const sunB = Math.round(20  + strength * 25);  // 20  → 45
+    const sunA = (0.42 + strength * 0.20).toFixed(2); // 0.42 → 0.62
 
-    // Schattenfarbe
-    const shadA = (0.42 + strength * 0.13).toFixed(2); // 0.42→0.55
-
-    // ── Pass 1: Gesamte Fläche mit Sonnenschein füllen ────────────────
-    // Radial-Gradient: Mitte der Karte = heller, Ränder = etwas dunkler
+    // ── Pass 1: fill entire canvas with warm sunshine tint ───────────
     const cx = W / 2, cy = H / 2;
-    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.7);
-    grad.addColorStop(0,   `rgba(${sunR}, ${sunG}, ${sunB}, ${sunA})`);
-    grad.addColorStop(1,   `rgba(${sunR}, ${Math.max(160, sunG - 40)}, ${sunB}, ${parseFloat(sunA) * 0.7})`);
-
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.72);
+    grad.addColorStop(0, `rgba(${sunR}, ${sunG}, ${sunB}, ${sunA})`);
+    grad.addColorStop(1, `rgba(${sunR}, ${Math.max(150, sunG - 45)}, ${sunB}, ${(parseFloat(sunA) * 0.62).toFixed(2)})`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
-    // ── Pass 2: Schattenpolygone dunkel darüber zeichnen ─────────────
+    // ── Pass 2: erase shadow polygons with destination-out ───────────
+    // Result: warm tint survives only on SUNNY pixels; shadow areas
+    //         become fully transparent → clean basemap shows through.
     if (!shadows?.features?.length) return;
 
-    // Alle Schattenpolygone in einem einzigen Path → fill('nonzero')
-    // → kein Opacity-Stacking bei überlappenden Gebäuden
-    ctx.fillStyle = `rgba(15, 25, 50, ${shadA})`;
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = 'rgba(0,0,0,1)';
     ctx.beginPath();
 
     for (const f of shadows.features) {
@@ -378,13 +368,8 @@ const Shadow = {
       }
     }
 
-    // Einmaliges Füllen aller Subpaths
     ctx.fill('nonzero');
-
-    // ── Pass 3: Weiche Kante zwischen Sonne und Schatten ─────────────
-    // Optional: leichter Blur-Effekt am Canvas-Rand für sanftere Übergänge
-    // (wird via CSS filter: blur(1px) auf dem Canvas-Element gesteuert,
-    //  hier nicht nötig – der Übergang ist bereits durch den Gradient weich)
+    ctx.globalCompositeOperation = 'source-over'; // reset
   },
 
   /**

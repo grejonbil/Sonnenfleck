@@ -73,6 +73,15 @@ map.on('error', err => {
   console.error('MapLibre GL Fehler:', err);
 });
 
+// ── Zoom hint ─────────────────────────────────────────────────────────────
+
+function updateZoomHint() {
+  const hint = document.getElementById('zoom-hint');
+  if (!hint) return;
+  const zoom = map.getZoom();
+  hint.hidden = zoom >= 13.5;
+}
+
 // Karte vollständig geladen
 map.on('load', async () => {
   state.mapReady = true;
@@ -82,6 +91,10 @@ map.on('load', async () => {
 
   // Während Karte bewegt wird: Canvas leeren (Schatten würden verrutschen)
   map.on('movestart', () => Shadow.clearCanvas());
+
+  // Zoom hint
+  map.on('zoom', updateZoomHint);
+  updateZoomHint();
 
   // Splash ausblenden (Map ist bereit)
   setTimeout(hideSplash, 400);
@@ -105,6 +118,23 @@ document.addEventListener('DOMContentLoaded', () => renderFavorites());
 
 // ── GPS-Standort ──────────────────────────────────────────────────────────
 
+let _userMarker = null;
+
+function setUserMarker(lat, lng) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:relative;width:16px;height:16px';
+  const pulse = document.createElement('div');
+  pulse.className = 'user-location-pulse';
+  const dot = document.createElement('div');
+  dot.className = 'user-location-dot';
+  wrap.appendChild(pulse);
+  wrap.appendChild(dot);
+  if (_userMarker) _userMarker.remove();
+  _userMarker = new maplibregl.Marker({ element: wrap, anchor: 'center' })
+    .setLngLat([lng, lat])
+    .addTo(map);
+}
+
 function locateUser() {
   if (!navigator.geolocation) { updateView(); return; }
   navigator.geolocation.getCurrentPosition(
@@ -112,6 +142,7 @@ function locateUser() {
       state.lat = pos.coords.latitude;
       state.lng = pos.coords.longitude;
       map.flyTo({ center: [state.lng, state.lat], zoom: 15 });
+      setUserMarker(state.lat, state.lng);
       reverseGeocode(state.lat, state.lng);
       updateView();
     },
@@ -403,6 +434,9 @@ function pickResult(item) {
   document.getElementById('location-name').textContent = item.textContent.trim().split(',')[0];
   hideResults();
   searchInput.value = '';
+  // Expand the bottom sheet so the user sees the updated info
+  const sheet = document.getElementById('bottom-sheet');
+  if (sheet) { sheet.classList.remove('collapsed'); sheet.classList.add('tabs-open'); }
   updateView();
 }
 
