@@ -1,11 +1,11 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#FFB627">
-  <meta name="description" content="SonnenCheck – Wo scheint die Sonne gerade? Interaktive Schattenkarte für die Schweiz.">
-  <title>SonnenCheck ☀️</title>
+  <meta name="description" content="SonnenFleck — Wo scheint die Sonne gerade? Interaktive Karte für die Schweiz.">
+  <title>SonnenFleck — Redesign</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon.svg">
 
@@ -13,395 +13,47 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=DM+Sans:ital,opsz,wght@0,9..40,400..800;1,9..40,400..600&display=swap" rel="stylesheet">
 
-  <link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet">
-  <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="app.css">
 
-  <link rel="stylesheet" href="style.css">
+  <style>
+    html, body { background: #E8DDC4; height: 100%; }
+    body { margin: 0; overflow: hidden; }
+    #root { width: 100%; height: 100%; }
+    .stage {
+      width: 100vw; height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      background: #E8DDC4;
+      overflow: hidden;
+    }
+    /* JS sets --s on .device-fit; default to 1 */
+    .device-fit {
+      --s: 1;
+      width: calc(402px * var(--s));
+      height: calc(874px * var(--s));
+      position: relative;
+    }
+    .device-fit > * {
+      transform: scale(var(--s));
+      transform-origin: top left;
+      position: absolute;
+      top: 0; left: 0;
+    }
+    .app { width: 100%; height: 100%; }
+  </style>
 </head>
 <body>
+  <div id="root"></div>
 
-  <!-- ── Splash ── -->
-  <div id="splash">
-    <div class="splash-inner">
-      <div class="splash-logo" aria-hidden="true"></div>
-      <h1 class="splash-title">SonnenCheck</h1>
-      <p class="splash-tagline">Finde den nächsten warmen Fleck — bevor die Sonne weiterzieht.</p>
-      <div class="splash-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-      <p class="splash-hint">Karte wird geladen…</p>
-      <button type="button" id="btn-splash-skip" class="splash-btn" aria-label="App starten">
-        Jetzt erkunden →
-      </button>
-    </div>
-  </div>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 
-  <!-- ── Map ── -->
-  <div id="map"></div>
-  <canvas id="shadow-canvas" aria-hidden="true"></canvas>
-
-  <!-- ── Search bar ── -->
-  <div id="search-container" role="search">
-    <div class="search-logo" aria-hidden="true"></div>
-    <input
-      type="search"
-      id="search-input"
-      placeholder="Ort, Berg, Beizli suchen…"
-      autocomplete="off"
-      autocorrect="off"
-      spellcheck="false"
-      aria-label="Ort suchen"
-    >
-  </div>
-  <div id="search-results" role="listbox" aria-label="Suchergebnisse"></div>
-
-  <!-- ── Status pill ── -->
-  <div id="sun-status" role="status" aria-live="polite">
-    <span id="status-icon" aria-hidden="true">☀️</span>
-    <span id="status-text">Karte erkunden</span>
-  </div>
-
-  <!-- ── GPS button ── -->
-  <button type="button" id="btn-locate" class="map-button" title="Meinen Standort anzeigen" aria-label="Meinen Standort">
-    <span class="crosshair" aria-hidden="true"></span>
-  </button>
-
-  <!-- ── Bottom sheet ── -->
-  <div id="bottom-sheet" role="complementary" aria-label="Steuerung">
-    <div class="sheet-handle" id="sheet-handle" role="presentation" aria-label="Sheet öffnen"></div>
-
-    <!-- Hero: place + weather -->
-    <div class="sheet-hero">
-      <div class="sheet-place">
-        <div class="place-row">
-          <span class="pin" aria-hidden="true"></span>
-          <span>Aktuelle Position</span>
-        </div>
-        <div id="location-name">Zürich</div>
-      </div>
-      <div id="weather-widget" aria-label="Wetter">
-        <span class="wicon" aria-hidden="true"></span>
-        <span id="weather-icon" aria-hidden="true">🌤️</span>
-        <span id="weather-text">—</span>
-      </div>
-    </div>
-
-    <!-- Big time display -->
-    <div class="sheet-time" aria-live="polite">
-      <span id="td-hours">12</span><span class="colon" aria-hidden="true">:</span><span id="td-mins">00</span>
-      <span class="ampm" aria-hidden="true">Uhr</span>
-    </div>
-    <!-- Hidden: still read/written by app.js -->
-    <label for="time-slider" id="time-label" class="time-display" aria-hidden="true">12:00</label>
-
-    <!-- Sun times -->
-    <div id="sun-times" aria-label="Sonnenauf- und -untergang"></div>
-
-    <!-- Sun arc + invisible range input overlaid -->
-    <div class="sun-arc-wrap">
-      <svg id="sun-arc-svg" class="sun-arc" viewBox="0 0 340 78" preserveAspectRatio="none" aria-hidden="true">
-        <defs>
-          <linearGradient id="arcGrad" x1="0" x2="1">
-            <stop offset="0%"   stop-color="#FFB16B"/>
-            <stop offset="50%"  stop-color="#FFC230"/>
-            <stop offset="100%" stop-color="#F25B36"/>
-          </linearGradient>
-          <radialGradient id="sunBead" cx="50%" cy="50%" r="50%">
-            <stop offset="0%"   stop-color="#FFF1B0"/>
-            <stop offset="60%"  stop-color="#FFC230"/>
-            <stop offset="100%" stop-color="#E07A14"/>
-          </radialGradient>
-          <filter id="sunBlur"><feGaussianBlur stdDeviation="6"/></filter>
-        </defs>
-        <!-- horizon -->
-        <line x1="0" y1="77" x2="340" y2="77" stroke="rgba(45,26,14,.12)" stroke-width="1" stroke-dasharray="2 4"/>
-        <!-- full arc faint -->
-        <path id="arc-full" d="M 14 78 A 156 156 0 0 1 326 78" fill="none" stroke="rgba(45,26,14,.15)" stroke-width="3" stroke-linecap="round"/>
-        <!-- filled portion -->
-        <path id="arc-filled" d="" fill="none" stroke="url(#arcGrad)" stroke-width="3.5" stroke-linecap="round"/>
-        <!-- sunrise notch -->
-        <circle id="arc-sr" cx="14" cy="78" r="3.5" fill="#FBF3E1" stroke="#C8A98B" stroke-width="1.4"/>
-        <text id="arc-sr-lbl" x="14" y="94" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="9" font-weight="700" fill="#9D8262" letter-spacing=".05em">06:24</text>
-        <!-- sunset notch -->
-        <circle id="arc-ss" cx="326" cy="78" r="3.5" fill="#FBF3E1" stroke="#C8A98B" stroke-width="1.4"/>
-        <text id="arc-ss-lbl" x="326" y="94" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="9" font-weight="700" fill="#9D8262" letter-spacing=".05em">20:42</text>
-        <!-- sun bead group -->
-        <g id="arc-bead">
-          <circle cx="170" cy="78" r="14" fill="url(#sunBead)" opacity=".4" filter="url(#sunBlur)"/>
-          <circle cx="170" cy="78" r="9"  fill="url(#sunBead)" style="filter:drop-shadow(0 0 8px rgba(255,200,80,.85))"/>
-          <circle cx="170" cy="78" r="3.2" fill="#FFF6CC"/>
-        </g>
-      </svg>
-      <input type="range" id="time-slider" class="arc-slider-input"
-             min="360" max="1320" step="15" value="720"
-             aria-label="Uhrzeit auswählen">
-      <div class="sun-arc-labels">
-        <span>06</span><span>10</span><span>14</span><span>18</span><span>22</span>
-      </div>
-    </div>
-
-    <!-- Playbar -->
-    <div class="playbar">
-      <label class="date-chip" for="date-picker" aria-label="Datum auswählen">
-        <span class="cal" aria-hidden="true"></span>
-        <span id="date-display">Heute</span>
-        <input type="date" id="date-picker" aria-label="Datum auswählen">
-      </label>
-      <button type="button" id="btn-play" class="play" title="Animation starten" aria-label="Zeitraffer starten">▶</button>
-      <select id="anim-speed" aria-label="Animationsgeschwindigkeit">
-        <option value="1">1×</option>
-        <option value="2" selected>2×</option>
-        <option value="4">4×</option>
-        <option value="8">8×</option>
-      </select>
-    </div>
-
-    <!-- Jump to now -->
-    <button type="button" id="btn-now" aria-label="Aktuelle Uhrzeit">
-      <span class="dot" aria-hidden="true"></span>
-      Sprung zu jetzt
-    </button>
-
-    <!-- Tabs -->
-    <div class="sheet-tabs" role="tablist">
-      <button id="tab-favs"    role="tab" aria-selected="true"  class="active">★ Favoriten</button>
-      <button id="tab-weather" role="tab" aria-selected="false">⛅ Wetter heute</button>
-    </div>
-
-    <!-- Favorites panel -->
-    <div id="favorites-section" role="tabpanel" aria-label="Favoriten">
-      <div id="favorites-list" role="list"></div>
-      <div class="fav-actions">
-        <button type="button" id="btn-fav-save" title="Als Favorit speichern" aria-label="Favorit speichern">☆</button>
-      </div>
-    </div>
-
-    <!-- Weather panel -->
-    <div id="weather-panel" class="tab-hidden" role="tabpanel" aria-label="Wetter heute">
-      <div>
-        <div class="wk">Temperatur</div>
-        <div class="wv" id="wp-temp">—</div>
-      </div>
-      <div>
-        <div class="wk">Gefühlt</div>
-        <div class="wv">—</div>
-      </div>
-      <div>
-        <div class="wk">UV-Index</div>
-        <div class="wv">—</div>
-      </div>
-      <div>
-        <div class="wk">Bewölkung</div>
-        <div class="wv" id="wp-clouds">—</div>
-      </div>
-    </div>
-
-    <!-- Footer -->
-    <div class="sheet-footer">
-      <button type="button" id="btn-impressum" class="link-btn">Impressum &amp; Datenschutz</button>
-    </div>
-  </div>
-
-  <!-- ── Impressum modal ── -->
-  <div id="impressum-overlay" hidden role="dialog" aria-modal="true" aria-label="Impressum">
-    <div id="impressum-panel">
-      <div class="impressum-grab" aria-hidden="true"></div>
-      <button type="button" id="btn-impressum-close" aria-label="Schliessen">✕</button>
-      <div class="impressum-content">
-        <h2>☀️ SonnenCheck</h2>
-        <p>Interaktive Sonnenkarte für die Schweiz — zeigt wo die Sonne scheint, Sonnenzeiten und aktuelle Wettervorhersage.</p>
-
-        <h3>Betreiber</h3>
-        <p>
-          Gregory Biland<br>
-          Dienerstrasse 32<br>
-          8004 Zürich<br>
-          Schweiz<br>
-          <a href="https://github.com/grejonbil" target="_blank" rel="noopener">github.com/grejonbil</a>
-        </p>
-
-        <h3>Datenquellen</h3>
-        <ul class="source-list">
-          <li><span>🌤 Wetter</span><a href="https://open-meteo.com/en/docs/meteoswiss-api" target="_blank" rel="noopener">Open-Meteo · MeteoSchweiz ICON-CH1-EPS</a></li>
-          <li><span>🗺 Karte</span><a href="https://www.swisstopo.admin.ch" target="_blank" rel="noopener">swisstopo Leichte Basiskarte</a></li>
-          <li><span>📍 Geocoding</span><a href="https://api3.geo.admin.ch" target="_blank" rel="noopener">swisstopo API (geo.admin.ch)</a></li>
-          <li><span>🏙 Gebäude 3D</span><a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap via Overpass API</a></li>
-          <li><span>☀️ Sonnenberechnung</span><a href="https://github.com/mourner/suncalc" target="_blank" rel="noopener">SunCalc.js (V. Agafonkin)</a></li>
-          <li><span>🖥 Kartenbibliothek</span><a href="https://maplibre.org" target="_blank" rel="noopener">MapLibre GL JS</a></li>
-        </ul>
-
-        <h3>Datenschutz</h3>
-        <p>Diese App speichert keine personenbezogenen Daten auf einem Server.</p>
-        <ul>
-          <li>Favoritenorte werden lokal im Browser (localStorage) gespeichert.</li>
-          <li>Der GPS-Standort wird nur bei expliziter Anfrage verwendet und nicht dauerhaft gespeichert.</li>
-          <li>Beim Laden der Karte, der Wetterdaten und der Ortssuche werden Koordinaten an swisstopo und Open-Meteo übertragen.</li>
-          <li>Es werden keine Cookies, keine Analytics und keine Tracking-Dienste eingesetzt.</li>
-        </ul>
-
-        <h3>Haftungsausschluss</h3>
-        <p>Die Wetter- und Sonnenvorhersagen werden von Drittanbietern bereitgestellt. Es wird keine Gewähr für die Richtigkeit, Vollständigkeit oder Aktualität der Informationen übernommen.</p>
-
-        <h3>Lizenzen</h3>
-        <ul>
-          <li>MapLibre GL JS – BSD-2-Clause</li>
-          <li>SunCalc.js – BSD-2-Clause</li>
-          <li>OpenStreetMap-Daten – ODbL</li>
-          <li>swisstopo-Geodaten – <a href="https://www.swisstopo.admin.ch/de/nutzungsbedingungen-kostenlose-geodaten" target="_blank" rel="noopener">Nutzungsbedingungen swisstopo</a></li>
-        </ul>
-      </div>
-    </div>
-  </div>
-
-  <script src="sun.js"></script>
-  <script src="shadow.js"></script>
-  <script src="weather.js"></script>
-  <script src="favorites.js"></script>
-  <script src="app.js"></script>
-
-  <!-- Design enhancements: arc, time display, tabs, sheet expand -->
-  <script>
-  (function () {
-    'use strict';
-
-    // ── Animated sun rays on splash ──────────────────────────────────────
-    var logo = document.querySelector('.splash-logo');
-    if (logo) {
-      var core = document.createElement('div');
-      core.className = 'sun-core-circle';
-      logo.appendChild(core);
-      for (var i = 0; i < 12; i++) {
-        var ray = document.createElement('div');
-        ray.className = 'ray';
-        ray.style.transform = 'translate(-50%, -50%) rotate(' + (i * 30) + 'deg) translateY(-80px)';
-        ray.style.animationDelay = (0.6 + i * 0.04) + 's';
-        logo.appendChild(ray);
-      }
-    }
-
-    // ── Sun arc update ────────────────────────────────────────────────────
-    var MIN_H = 6, MAX_H = 22;
-    var W = 340, H = 78, r = 156;
-    var cx = W / 2, cy = H + 28;
-
-    function updateArc(minutes) {
-      var hour = minutes / 60;
-      var t = Math.max(0, Math.min(1, (hour - MIN_H) / (MAX_H - MIN_H)));
-      var ang = Math.PI * (1 - t);
-      var sx = +(cx + r * Math.cos(ang)).toFixed(1);
-      var sy = +(cy - r * Math.sin(ang)).toFixed(1);
-
-      var filled = document.getElementById('arc-filled');
-      if (filled) {
-        filled.setAttribute('d',
-          t <= 0 ? '' : 'M ' + (cx - r).toFixed(1) + ' ' + cy + ' A ' + r + ' ' + r + ' 0 0 1 ' + sx + ' ' + sy
-        );
-      }
-
-      var bead = document.getElementById('arc-bead');
-      if (bead) {
-        var aboveHorizon = hour > 6.4 && hour < 20.7;
-        bead.style.display = aboveHorizon ? '' : 'none';
-        bead.querySelectorAll('circle').forEach(function (c) {
-          c.setAttribute('cx', sx);
-          c.setAttribute('cy', sy);
-        });
-      }
-    }
-
-    // ── Time display sync (hrs/mins split) ────────────────────────────────
-    function updateTimeDisplay(minutes) {
-      var h = Math.floor(minutes / 60).toString().padStart(2, '0');
-      var m = (minutes % 60).toString().padStart(2, '0');
-      var hdEl = document.getElementById('td-hours');
-      var mdEl = document.getElementById('td-mins');
-      if (hdEl) hdEl.textContent = h;
-      if (mdEl) mdEl.textContent = m;
-    }
-
-    // ── Date display ──────────────────────────────────────────────────────
-    function updateDateDisplay(dateStr) {
-      var el = document.getElementById('date-display');
-      if (!el || !dateStr) return;
-      var d = new Date(dateStr + 'T12:00:00');
-      var today = new Date().toISOString().slice(0, 10);
-      var wday = d.toLocaleDateString('de-CH', { weekday: 'short' });
-      var day  = d.getDate();
-      var mon  = d.toLocaleDateString('de-CH', { month: 'short' });
-      el.textContent = (dateStr === today ? 'Heute · ' : '') + wday + ' ' + day + '. ' + mon;
-    }
-
-    // ── Sync all from slider ──────────────────────────────────────────────
-    function syncAll() {
-      var slider = document.getElementById('time-slider');
-      if (!slider) return;
-      var v = parseInt(slider.value, 10) || 720;
-      updateArc(v);
-      updateTimeDisplay(v);
-    }
-
-    // ── Wire up slider input listener ─────────────────────────────────────
-    var slider = document.getElementById('time-slider');
-    if (slider) {
-      slider.addEventListener('input', function () {
-        var v = parseInt(slider.value, 10);
-        updateArc(v);
-        updateTimeDisplay(v);
-      });
-    }
-
-    // ── Wire up date picker ───────────────────────────────────────────────
-    var datePicker = document.getElementById('date-picker');
-    if (datePicker) {
-      datePicker.addEventListener('change', function () {
-        updateDateDisplay(datePicker.value);
-      });
-    }
-
-    // Initial sync + retry for async map/slider init
-    syncAll();
-    [500, 1000, 2000, 3500].forEach(function (ms) {
-      setTimeout(syncAll, ms);
-    });
-    setTimeout(function () {
-      var dp = document.getElementById('date-picker');
-      if (dp && dp.value) updateDateDisplay(dp.value);
-      else updateDateDisplay(new Date().toISOString().slice(0, 10));
-    }, 600);
-
-    // ── Sheet expand / collapse ───────────────────────────────────────────
-    var sheet  = document.getElementById('bottom-sheet');
-    var handle = document.getElementById('sheet-handle');
-    if (sheet && handle) {
-      handle.addEventListener('click', function () {
-        sheet.classList.toggle('expanded');
-      });
-    }
-
-    // ── Tab switching ─────────────────────────────────────────────────────
-    var tabFavs    = document.getElementById('tab-favs');
-    var tabWeather = document.getElementById('tab-weather');
-    var favSection = document.getElementById('favorites-section');
-    var weatherPanel = document.getElementById('weather-panel');
-
-    function showFavs() {
-      if (!tabFavs) return;
-      tabFavs.classList.add('active');    tabFavs.setAttribute('aria-selected', 'true');
-      tabWeather.classList.remove('active'); tabWeather.setAttribute('aria-selected', 'false');
-      favSection.classList.remove('tab-hidden');
-      weatherPanel.classList.add('tab-hidden');
-      if (sheet) sheet.classList.add('expanded');
-    }
-    function showWeather() {
-      if (!tabWeather) return;
-      tabWeather.classList.add('active');  tabWeather.setAttribute('aria-selected', 'true');
-      tabFavs.classList.remove('active');  tabFavs.setAttribute('aria-selected', 'false');
-      weatherPanel.classList.remove('tab-hidden');
-      favSection.classList.add('tab-hidden');
-      if (sheet) sheet.classList.add('expanded');
-    }
-    if (tabFavs)    tabFavs.addEventListener('click', showFavs);
-    if (tabWeather) tabWeather.addEventListener('click', showWeather);
-  })();
-  </script>
+  <script type="text/babel" src="ios-frame.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="map.jsx"></script>
+  <script type="text/babel" src="components.jsx"></script>
+  <script type="text/babel" src="sheet.jsx"></script>
+  <script type="text/babel" src="app.jsx"></script>
 </body>
 </html>

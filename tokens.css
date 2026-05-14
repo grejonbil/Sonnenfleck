@@ -1,0 +1,112 @@
+/* ============================================================
+   SonnenFleck — Redesign Tokens
+   ============================================================ */
+
+:root {
+  /* —— Type ———————————————————————————————————————— */
+  --font-display: "Bricolage Grotesque", "DM Sans", system-ui, sans-serif;
+  --font-text:    "DM Sans", "Bricolage Grotesque", system-ui, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, monospace;
+
+  /* —— Solar palette (sun) ——————————————————————————— */
+  --sun-core:  #FFB627;
+  --sun-warm:  #FF8A2C;
+  --sun-glow:  #FFE38A;
+  --sun-deep:  #C75A14;
+  --sun-ember: #F25B36;
+
+  /* —— Shade palette (no-sun) ———————————————————————— */
+  --shade-core: #475977;
+  --shade-soft: #8B98B5;
+  --shade-tint: #D6DCE9;
+  --shade-mist: #E9EDF4;
+
+  /* —— Earth (map, paper) ———————————————————————————— */
+  --paper:      #FBF3E1;
+  --paper-deep: #F2E2BE;
+  --cream-50:   #FFFBF3;
+  --cream-100:  #FBF3E3;
+  --lake:       #8FBEC8;
+  --lake-deep:  #4F8993;
+  --ridge:      #C8A98B;
+
+  /* —— Ink ——————————————————————————————————————— */
+  --ink:        #2A1A0E;
+  --ink-soft:   #6B4E32;
+  --muted:      #9D8262;
+
+  /* —— Surface / Glass ————————————————————————————— */
+  --surface:        rgba(255, 251, 243, 0.86);
+  --surface-strong: rgba(255, 251, 243, 0.96);
+  --surface-warm:   rgba(255, 235, 200, 0.82);
+  --border:         rgba(45, 26, 14, 0.10);
+  --border-strong:  rgba(45, 26, 14, 0.18);
+
+  /* —— Shape ——————————————————————————————————————— */
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-xl: 32px;
+  --r-full: 999px;
+
+  /* —— Elevation ——————————————————————————————————— */
+  --shadow-sm: 0 2px 6px -2px rgba(45, 26, 14, .10),
+               0 1px 2px rgba(45, 26, 14, .06);
+  --shadow-md: 0 8px 20px -6px rgba(199, 90, 20, .18),
+               0 4px 10px -3px rgba(45, 26, 14, .08);
+  --shadow-lg: 0 24px 48px -12px rgba(199, 90, 20, .25),
+               0 10px 24px -8px rgba(45, 26, 14, .12);
+  --glow-sun:  0 0 0 6px rgba(255, 182, 39, .18),
+               0 0 32px 4px rgba(255, 182, 39, .35),
+               0 8px 18px -6px rgba(199, 90, 20, .35);
+  --glow-shade:0 0 0 6px rgba(71, 89, 119, .14),
+               0 8px 18px -6px rgba(71, 89, 119, .28);
+
+  /* —— Time-of-day sky ————————————————————————————— */
+  --sky-top: #A9D8EB;
+  --sky-bot: #FFF4CC;
+  --tod-tint: rgba(255, 200, 100, 0.00);
+}
+
+:root[data-tod="dawn"] {
+  --sky-top: #3D2748;
+  --sky-bot: #FFA876;
+  --sun-core: #FF8E5A;
+  --sun-glow: #FFC79A;
+  --tod-tint: rgba(255, 130, 90, 0.08);
+}
+:root[data-tod="morning"] {
+  --sky-top: #7BC4E8;
+  --sky-bot: #FFE4A8;
+  --sun-core: #FFB627;
+  --sun-glow: #FFE38A;
+  --tod-tint: rgba(255, 200, 120, 0.05);
+}
+:root[data-tod="noon"] {
+  --sky-top: #BCDCEB;
+  --sky-bot: #FFF6D2;
+  --sun-core: #FFC230;
+  --sun-glow: #FFEEB0;
+  --tod-tint: rgba(255, 230, 150, 0.04);
+}
+:root[data-tod="golden"] {
+  --sky-top: #F6B873;
+  --sky-bot: #FFD79A;
+  --sun-core: #FF8A2C;
+  --sun-glow: #FFC079;
+  --tod-tint: rgba(255, 140, 60, 0.08);
+}
+:root[data-tod="dusk"] {
+  --sky-top: #52214A;
+  --sky-bot: #FF6E4A;
+  --sun-core: #F25B36;
+  --sun-glow: #FF9670;
+  --tod-tint: rgba(220, 70, 50, 0.10);
+}
+:root[data-tod="night"] {
+  --sky-top: #0F1B33;
+  --sky-bot: #2A3458;
+  --sun-core: #88A3D4;
+  --sun-glow: #B6C6E6;
+  --tod-tint: rgba(40, 60, 120, 0.14);
+}
