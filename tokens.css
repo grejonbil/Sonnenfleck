@@ -4,8 +4,8 @@
 
 :root {
   /* —— Type ———————————————————————————————————————— */
-  --font-display: "Bricolage Grotesque", "DM Sans", system-ui, sans-serif;
-  --font-text:    "DM Sans", "Bricolage Grotesque", system-ui, sans-serif;
+  --font-display: "Poppins", system-ui, sans-serif;
+  --font-text:    "Poppins", system-ui, sans-serif;
   --font-mono:    "JetBrains Mono", ui-monospace, monospace;
 
   /* —— Solar palette (sun) ——————————————————————————— */
