@@ -4,10 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#FFB627">
-  <meta name="description" content="SonnenFleck – Wo scheint die Sonne gerade? Interaktive Karte für die Schweiz.">
-  <title>SonnenFleck</title>
+  <meta name="description" content="daylit – Wo scheint die Sonne gerade? Echtzeit-Sonnenkarte für die Schweiz.">
+  <title>daylit</title>
+  <link rel="icon" type="image/svg+xml" href="daylit-logos/favicon.svg">
   <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="apple-touch-icon" href="daylit-logos/app-icon.svg">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -191,7 +192,6 @@
 
     /* ── Desktop / tablet responsive layout (≥ 720px wide) ── */
     @media (min-width: 720px) {
-      /* Controls panel constrained to left side */
       .topbar {
         right: auto !important;
         width: 420px !important;
@@ -199,30 +199,38 @@
       #search-results {
         right: auto !important;
         width: 420px !important;
+        /* sit directly below the search card */
+        top: 76px !important;
       }
       .impressum-fab {
-        left: 434px !important;
-        right: auto !important;
+        left: auto !important;
+        right: 14px !important;
       }
       .gps-btn {
         right: auto !important;
         left: 14px !important;
         bottom: 14px !important;
       }
-      /* Sheet becomes a left sidebar panel */
+      /* Sheet: left sidebar panel */
       .sheet {
         right: auto !important;
         width: 420px !important;
         border-radius: var(--r-xl) !important;
         bottom: 14px !important;
         left: 14px !important;
+        /* Collapsed: peek 240px from bottom */
         max-height: calc(100vh - 28px) !important;
       }
-      /* On desktop always show slightly more (taller collapsed area) */
       .sheet.collapsed {
         transform: translateY(calc(100% - 240px)) !important;
       }
-      /* Impressum panel also constrained */
+      /* Expanded: leave 150px at top so search bar is never covered */
+      .sheet.tabs-open {
+        transform: translateY(0) !important;
+        max-height: calc(100vh - 150px) !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+      }
       #impressum-panel.impressum {
         left: 14px !important;
         right: auto !important;
@@ -231,12 +239,7 @@
         bottom: 14px !important;
         max-height: calc(100vh - 28px) !important;
       }
-      /* Zoom hint left-aligned */
-      #zoom-hint {
-        left: 220px;
-        bottom: 14px;
-        transform: none;
-      }
+      #zoom-hint { left: 220px; bottom: 14px; transform: none; }
     }
   </style>
 </head>
@@ -246,7 +249,7 @@
   <div id="splash" class="splash">
     <div class="splash-mark">
       <span class="glyph"></span>
-      <span> sonnenfleck</span>  
+      <span>daylit</span>  
     </div>
 
     <div class="splash-hero">
@@ -280,7 +283,9 @@
   <!-- ── Top bar: search + status ── -->
   <div class="topbar">
     <div class="search-card" role="search">
-      <span class="search-logo" aria-hidden="true"></span>
+      <a href="/" class="logo-link" aria-label="daylit – Startseite">
+        <img src="daylit-logos/logomark.svg" alt="daylit" height="32" width="32" style="border-radius:50%;display:block">
+      </a>
       <input
         type="search"
         id="search-input"
@@ -442,27 +447,11 @@
       Sprung zu jetzt · <span id="btn-now-time">--:--</span>
     </button>
 
-    <!-- Tabs -->
-    <div class="sheet-tabs" role="tablist">
-      <button id="tab-favs"    role="tab" aria-selected="true"  class="active">★ Favoriten</button>
-      <button id="tab-weather" role="tab" aria-selected="false">⛅ Wetter heute</button>
-    </div>
-
-    <!-- Favorites panel -->
-    <div id="favorites-section" role="tabpanel" aria-label="Favoriten">
-      <div id="favorites-list" role="list"></div>
-      <div class="fav-actions">
-        <button type="button" id="btn-fav-save" class="fav-chip add" aria-label="Favorit speichern">
-          ☆ Favorit speichern
-        </button>
-      </div>
-    </div>
-
-    <!-- Weather panel -->
-    <div id="weather-panel" class="weather-detail tab-hidden" role="tabpanel" aria-label="Wetter heute">
+    <!-- Weather panel — always visible, no tabs -->
+    <div id="weather-panel" class="weather-detail" role="region" aria-label="Wetter heute">
       <div><div class="wk">Temperatur</div><div class="wv" id="wp-temp">—</div></div>
-      <div><div class="wk">Gefühlt</div><div class="wv">—</div></div>
-      <div><div class="wk">UV-Index</div><div class="wv">—</div></div>
+      <div><div class="wk">Gefühlt</div><div class="wv" id="wp-feels">—</div></div>
+      <div><div class="wk">UV-Index</div><div class="wv" id="wp-uv">—</div></div>
       <div><div class="wk">Bewölkung</div><div class="wv" id="wp-clouds">—</div></div>
     </div>
   </div>
@@ -471,9 +460,9 @@
   <div id="impressum-overlay" hidden class="modal-scrim">
     <div id="impressum-panel" class="impressum" role="dialog" aria-modal="true" aria-label="Impressum">
       <div class="sheet-grab" aria-hidden="true"></div>
-      <h2>Über SonnenFleck</h2>
+      <h2>Über daylit</h2>
       <p>
-        Ein Wochenend-Projekt aus Zürich. SonnenFleck zeigt dir auf der Karte,
+        Ein Wochenend-Projekt aus Zürich. daylit zeigt dir auf der Karte,
         wo in den nächsten Minuten die Sonne scheint — basierend auf echten
         Gebäudedaten und astronomischer Sonnenberechnung.
       </p>
@@ -493,10 +482,10 @@
       </div>
 
       <p style="margin-top:18px; font-size:12px; color:var(--ink-soft)">
-        Keine personenbezogenen Daten werden gespeichert. Favoriten liegen lokal im Browser.
+        Keine personenbezogenen Daten werden gespeichert.
       </p>
       <p style="margin-top:8px; font-size:12px; color:var(--ink-soft)">
-        © 2026 SonnenFleck · info@sonnenfleck.ch
+        © 2026 daylit · info@daylit.ch
       </p>
       <button
         type="button"
@@ -512,7 +501,6 @@
   <script src="sun.js"></script>
   <script src="shadow.js"></script>
   <script src="weather.js"></script>
-  <script src="favorites.js"></script>
   <script src="app.js"></script>
 
   <script>
@@ -711,30 +699,7 @@
       });
     }
 
-    // ── Tab switching ────────────────────────────────────────────────────────
-    var tabFavs     = document.getElementById('tab-favs');
-    var tabWeather  = document.getElementById('tab-weather');
-    var favSection  = document.getElementById('favorites-section');
-    var wPanel      = document.getElementById('weather-panel');
-
-    function showFavs() {
-      if (!tabFavs) return;
-      tabFavs.classList.add('active');    tabFavs.setAttribute('aria-selected', 'true');
-      tabWeather.classList.remove('active'); tabWeather.setAttribute('aria-selected', 'false');
-      favSection.classList.remove('tab-hidden');
-      wPanel.classList.add('tab-hidden');
-      if (sheet) { sheet.classList.remove('collapsed'); sheet.classList.add('tabs-open'); }
-    }
-    function showWeather() {
-      if (!tabWeather) return;
-      tabWeather.classList.add('active');  tabWeather.setAttribute('aria-selected', 'true');
-      tabFavs.classList.remove('active');  tabFavs.setAttribute('aria-selected', 'false');
-      wPanel.classList.remove('tab-hidden');
-      favSection.classList.add('tab-hidden');
-      if (sheet) { sheet.classList.remove('collapsed'); sheet.classList.add('tabs-open'); }
-    }
-    if (tabFavs)    tabFavs.addEventListener('click', showFavs);
-    if (tabWeather) tabWeather.addEventListener('click', showWeather);
+    // Tabs removed — weather panel is always visible.
 
     // ── btn-play: update icon via textContent ────────────────────────────────
     // app.js sets textContent to '▶' or '⏸'; the .play styles center it fine.

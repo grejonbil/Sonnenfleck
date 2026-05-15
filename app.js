@@ -1,7 +1,7 @@
 /**
- * app.js – SonnenCheck Schweiz · Hauptlogik
+ * app.js – daylit · Hauptlogik
  *
- * MapLibre GL JS mit swisstopo-Basiskarte (kein API-Token nötig).
+ * MapLibre GL JS, swisstopo / OpenFreeMap Karte, Open-Meteo Wetter.
  */
 
 const MAP_STYLE      = 'https://tiles.openfreemap.org/styles/liberty';
@@ -21,6 +21,8 @@ const state = {
   weatherHourly:     [],
   weatherCodeByHour: [],
   weatherTempByHour: [],
+  weatherFeelByHour: [],
+  weatherUvByHour:   [],
   popup:             null,
   mapReady:      false,
 };
@@ -113,8 +115,7 @@ map.on('load', async () => {
   map.on('moveend', onMapMoved);
 });
 
-// Favoriten sofort anzeigen – nicht erst nach Kartenstart warten
-document.addEventListener('DOMContentLoaded', () => renderFavorites());
+// (Favoriten entfernt)
 
 // ── GPS-Standort ──────────────────────────────────────────────────────────
 
@@ -463,64 +464,47 @@ async function reverseGeocode(lat, lng) {
 
 async function loadWeather() {
   const result = await Weather.get(state.lat, state.lng);
-  state.weatherHourly     = result.cloudCoverByHour  || [];
-  state.weatherCodeByHour = result.weatherCodeByHour || [];
-  state.weatherTempByHour = result.temperatureByHour || [];
+  state.weatherHourly      = result.cloudCoverByHour   || [];
+  state.weatherCodeByHour  = result.weatherCodeByHour  || [];
+  state.weatherTempByHour  = result.temperatureByHour  || [];
+  state.weatherFeelByHour  = result.apparentTempByHour || [];
+  state.weatherUvByHour    = result.uvIndexByHour      || [];
   updateWeatherForHour(Math.floor(state.minutes / 60));
 }
 
 function updateWeatherForHour(hour) {
-  const code = Weather.atHour(state.weatherCodeByHour, hour);
-  const temp = Weather.atHour(state.weatherTempByHour, hour);
+  const code   = Weather.atHour(state.weatherCodeByHour, hour);
+  const temp   = Weather.atHour(state.weatherTempByHour, hour);
+  const feels  = Weather.atHour(state.weatherFeelByHour, hour);
+  const uv     = Weather.atHour(state.weatherUvByHour,   hour);
+  const clouds = Weather.atHour(state.weatherHourly,     hour);
   const { icon } = Weather.describeCode(code);
-  document.getElementById('weather-icon').textContent = icon;
-  document.getElementById('weather-text').textContent = temp !== null ? `${Math.round(temp)}°` : '—';
-}
 
-// ── Favoriten ─────────────────────────────────────────────────────────────
+  // Weather chip (top of sheet)
+  const weatherIcon = document.getElementById('weather-icon');
+  if (weatherIcon) weatherIcon.textContent = icon;
+  const weatherText = document.getElementById('weather-text');
+  if (weatherText) weatherText.textContent = temp !== null ? `${Math.round(temp)}°` : '—';
 
-document.getElementById('btn-fav-save').addEventListener('click', () => {
-  const name = document.getElementById('location-name').textContent || 'Mein Ort';
-  Favorites.save(name, state.lat, state.lng);
-  renderFavorites();
-  const btn = document.getElementById('btn-fav-save');
-  btn.textContent = '★'; btn.classList.add('saved');
-  setTimeout(() => { btn.textContent = '☆'; btn.classList.remove('saved'); }, 1500);
-});
-
-function renderFavorites() {
-  const list = document.getElementById('favorites-list');
-  const favs = Favorites.getAll();
-  if (!favs.length) {
-    list.innerHTML = '<p class="no-favorites">Noch keine Favoriten gespeichert.</p>';
-    return;
+  // Weather panel grid
+  const wpTemp = document.getElementById('wp-temp');
+  if (wpTemp) wpTemp.textContent = temp !== null ? `${Math.round(temp)}°C` : '—';
+  const wpFeels = document.getElementById('wp-feels');
+  if (wpFeels) wpFeels.textContent = feels !== null ? `${Math.round(feels)}°C` : '—';
+  const wpUv = document.getElementById('wp-uv');
+  if (wpUv) {
+    if (uv !== null) {
+      const uvLabel = uv < 3 ? 'Niedrig' : uv < 6 ? 'Moderat' : uv < 8 ? 'Hoch' : uv < 11 ? 'Sehr hoch' : 'Extrem';
+      wpUv.textContent = `${Math.round(uv)} · ${uvLabel}`;
+    } else {
+      wpUv.textContent = '—';
+    }
   }
-  list.innerHTML = favs.map(f => `
-    <div class="fav-chip" role="listitem">
-      <span>⭐ ${f.name}</span>
-      <button class="fav-del" data-lat="${f.lat}" data-lng="${f.lng}" aria-label="${f.name} aufrufen">→</button>
-      <button class="fav-del" data-del="${f.id}" aria-label="${f.name} löschen">×</button>
-    </div>
-  `).join('');
-
-  list.querySelectorAll('[data-lat]').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      state.lat = parseFloat(btn.dataset.lat);
-      state.lng = parseFloat(btn.dataset.lng);
-      map.flyTo({ center: [state.lng, state.lat], zoom: 15 });
-      updateView();
-    });
-  });
-
-  list.querySelectorAll('[data-del]').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      Favorites.delete(btn.dataset.del);
-      renderFavorites();
-    });
-  });
+  const wpClouds = document.getElementById('wp-clouds');
+  if (wpClouds) wpClouds.textContent = clouds !== null ? `${Math.round(clouds)}%` : '—';
 }
+
+// (Favoriten entfernt)
 
 // ── URL-Parameter beim Start laden (Share-Link) ───────────────────────────
 

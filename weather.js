@@ -25,8 +25,8 @@ const Weather = {
 
     const url = 'https://api.open-meteo.com/v1/forecast' +
       `?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}` +
-      '&hourly=cloud_cover,temperature_2m,weather_code' +
-      '&models=meteoswiss_icon_ch1' +
+      '&hourly=cloud_cover,temperature_2m,apparent_temperature,weather_code,uv_index' +
+      '&models=meteoswiss_icon_ch2' +
       '&forecast_days=1&timezone=Europe%2FZurich';
 
     try {
@@ -39,9 +39,11 @@ const Weather = {
 
       const h = json.hourly ?? {};
       const result = {
-        cloudCoverByHour:  h.cloud_cover    ?? new Array(24).fill(0),
-        temperatureByHour: h.temperature_2m ?? new Array(24).fill(null),
-        weatherCodeByHour: h.weather_code   ?? new Array(24).fill(0),
+        cloudCoverByHour:       h.cloud_cover           ?? new Array(24).fill(0),
+        temperatureByHour:      h.temperature_2m        ?? new Array(24).fill(null),
+        apparentTempByHour:     h.apparent_temperature  ?? new Array(24).fill(null),
+        weatherCodeByHour:      h.weather_code          ?? new Array(24).fill(0),
+        uvIndexByHour:          h.uv_index              ?? new Array(24).fill(null),
       };
 
       localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: result }));
@@ -49,9 +51,11 @@ const Weather = {
     } catch (err) {
       console.warn('Wetterdaten nicht verfügbar:', err.message);
       return {
-        cloudCoverByHour:  new Array(24).fill(null),
-        temperatureByHour: new Array(24).fill(null),
-        weatherCodeByHour: new Array(24).fill(null),
+        cloudCoverByHour:   new Array(24).fill(null),
+        temperatureByHour:  new Array(24).fill(null),
+        apparentTempByHour: new Array(24).fill(null),
+        weatherCodeByHour:  new Array(24).fill(null),
+        uvIndexByHour:      new Array(24).fill(null),
       };
     }
   },

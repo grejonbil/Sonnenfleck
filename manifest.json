@@ -1,20 +1,20 @@
 {
-  "name": "SonnenCheck Schweiz",
-  "short_name": "SonnenCheck",
+  "name": "daylit",
+  "short_name": "daylit",
   "description": "Wo scheint die Sonne gerade? Echtzeit-Sonnenkarte für die Schweiz.",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#1A2A3A",
-  "theme_color": "#F5C518",
+  "background_color": "#1a1a1a",
+  "theme_color": "#FFB627",
   "orientation": "any",
   "lang": "de",
   "categories": ["lifestyle", "utilities", "travel"],
   "icons": [
     {
-      "src": "icon.svg",
+      "src": "daylit-logos/app-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any"
+      "purpose": "any maskable"
     }
   ]
 }

@@ -370,6 +370,38 @@ const Shadow = {
 
     ctx.fill('nonzero');
     ctx.globalCompositeOperation = 'source-over'; // reset
+
+    // ── Pass 3: erase building footprints ─────────────────────────────
+    // Buildings are already rendered gray by MapLibre (3D extrusion).
+    // Remove the warm tint from their footprint so the gray shows cleanly.
+    if (this._buildings?.features?.length) {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = 'rgba(0,0,0,1)';
+      ctx.beginPath();
+
+      for (const f of this._buildings.features) {
+        if (f.properties?._treeHeight) continue; // trees have no hard rooftop
+        const rings = f.geometry.type === 'Polygon'
+          ? [f.geometry.coordinates[0]]
+          : f.geometry.coordinates.map(p => p[0]);
+
+        for (const ring of rings) {
+          if (!ring || ring.length < 3) continue;
+          try {
+            const p0 = map.project([ring[0][0], ring[0][1]]);
+            ctx.moveTo(p0.x, p0.y);
+            for (let i = 1; i < ring.length; i++) {
+              const p = map.project([ring[i][0], ring[i][1]]);
+              ctx.lineTo(p.x, p.y);
+            }
+            ctx.closePath();
+          } catch (_) {}
+        }
+      }
+
+      ctx.fill('nonzero');
+      ctx.globalCompositeOperation = 'source-over';
+    }
   },
 
   /**
